@@ -156,13 +156,8 @@ class GPR:
         I = np.matrix( np.identity( int(np.sqrt(K.size)) ) )
         
         #Add a bit of "noise" because the Cholesky decomposition may not work.
-        K += 0.0000001*I
+        K = self.numeric_fix(K)
         
-        #add positive definite check
-        #while not positive_definite()
-        # K+= i*0.000000000001*I or something like that
-        #must have some sort of limit so it isn't adding huge numbers
-
         #Compute the Cholesky decomposition.
         L = np.matrix( np.linalg.cholesky(K) )
         
@@ -175,3 +170,51 @@ class GPR:
 
         #Return the sample(s) with distribution N~(m,K).
         return m + L*u
+
+    def positive_definite(self,K):
+        '''
+        Check whether a matrix is positive definite.
+        A matrix must be positive definite in order to compute the Cholesky decomposition.
+        '''
+        #For every eigenvalue.
+        for eigval in np.linalg.eigvals(K):
+            if eigval <= 0:
+                #If an eigenvalue is not positive, then the matrix is not positive definite.
+                return False
+
+        #If every eigenvalue is positive, then the matrix is positive definite.
+        return True
+
+    def numeric_fix(self,K):
+        '''
+        Add a small multiple of the identity matrix to the covariance matrix.
+        This can help to compute the Cholesky decomposition.
+        '''
+        #Define the identity matrix of appropriate size.
+        I = np.matrix( np.identity( int(np.sqrt(K.size)) ) )
+
+        #Define the multiple for the identity matrix
+        epsilon = 1e-14
+        
+        #Define the maximum number of iterations until giving up.
+        maxIter = int(1e9)
+
+        #print(epsilon)
+        #print(maxIter)        
+        #print(K)
+
+        for i in range(0,maxIter,1):
+            if self.positive_definite(K):
+                break
+            K += epsilon*I
+            #print("hi")
+        
+        #While the matrix is not positive definite.
+        #while(not self.positive_definite(K)):
+            #Add a small multiple of the identity matrix until it becomes positive definite.
+            #K += 0.0000000000001*I
+
+        #print(K)
+            
+        return K
+        

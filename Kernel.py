@@ -119,7 +119,6 @@ class CombinedKernel(Kernel):
 
         TODO:
         -check size of hparams, throw error
-        -this only really works if adding two basic kernels, misbehaves if adding a CombinedKernel
         '''
         #self.kernel1.set_hyperparameters(hparams[0])
         #self.kernel2.set_hyperparameters(hparams[1])
