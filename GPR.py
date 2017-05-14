@@ -30,13 +30,11 @@ class GPR:
     def compute_K(self,x1,x2):
         '''
         Recompute K, K_inv and return the result.
-
-        TODO:
-        -add positive definite check
         '''
-        #Compute the covariance matrix.
+        #Compute the covariance matrix and check that it is positive definite.
         K = self.kernel.get_cov_mat(x1,x2)
-
+        K = self.numeric_fix(K)
+        
         #Compute the inverse of the covariance matrix.
         K_inv = np.linalg.inv(K)
 
@@ -110,7 +108,6 @@ class GPR:
         TODO:
         -Add argument to specify optimization method
         -Test this method way more to ensure it performs as expected
-        -Ensure that set_hyperparameters updates the kernel hyperparameters as well
         '''
         #Set the initial hyperparameters to the ones entered by the user.
         hparams0 = self.kernel.get_hyperparameters()
@@ -150,12 +147,11 @@ class GPR:
 
         TODO:
         -Fix square root
-        -Add positive definite check and loop
         '''
         #Generate the identity matrix.
         I = np.matrix( np.identity( int(np.sqrt(K.size)) ) )
         
-        #Add a bit of "noise" because the Cholesky decomposition may not work.
+        #Check that the covariance matrix is positive definite and fix if it is not.
         K = self.numeric_fix(K)
         
         #Compute the Cholesky decomposition.
@@ -199,22 +195,14 @@ class GPR:
         #Define the maximum number of iterations until giving up.
         maxIter = int(1e9)
 
-        #print(epsilon)
-        #print(maxIter)        
-        #print(K)
-
+        #Loop for the maximum number of iterations.
         for i in range(0,maxIter,1):
             if self.positive_definite(K):
+                #If the matrix is positive definite, no need to keep adding epsilon*I and can break from loop.
                 break
+            #If the matrix is not positive definite, add a small multiple of the identity matrix until it is.
             K += epsilon*I
-            #print("hi")
-        
-        #While the matrix is not positive definite.
-        #while(not self.positive_definite(K)):
-            #Add a small multiple of the identity matrix until it becomes positive definite.
-            #K += 0.0000000000001*I
 
-        #print(K)
-            
+        #Return the "fixed" covariance matrix.
         return K
         
