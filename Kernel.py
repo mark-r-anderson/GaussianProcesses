@@ -10,19 +10,34 @@ class Kernel(ABC):
     Base class for all kernels.
     '''
     def __init__(self):
-        pass
-    
+        self.n_hparam_expect = -1
+
+    def set_n_hparam_expect(self,n_hparam_expect):
+        '''
+        Set the expected number of hyperparameters.
+        All kernels must set this or it will expect -1 hyperparameters which is nonsense!
+        '''
+        self.n_hparam_expect = n_hparam_expect
+
+    def check_size(self):
+        '''
+        NOT ACTUALLY USED ANYWHERE YET!!!
+        NEED TO HAVE INPUT FOR DIMENSION OF hparam; DEFAULT TO n=self.get_size()
+
+        Check that the number of hyperparameters used is as expected.
+        If someone tries to provide too few/too many hyperparameters, it will give an error.
+        If a kernel does not set its expected number of hyperparameters, it will give an error.
+        '''
+        if not (self.get_size() == self.n_hparam_expect):
+            raise ValueError("Hyperparameter array does not match expected size of hyperparameters.")
+        else:
+            return True
+        
     @abstractmethod
     def get_size(self):
         '''
         Return the number of hyperparameters in the kernel.
-        '''
-        pass
-        
-    @abstractmethod
-    def set_hyperparameters(self):
-        '''
-        Set the kernel hyperparameters.
+        Each child class (2) must implement.
         '''
         pass
 
@@ -30,6 +45,15 @@ class Kernel(ABC):
     def get_hyperparameters(self):
         '''
         Return the kernel hyperparameters.
+        Each child class (2) must implement.
+        '''
+        pass
+    
+    @abstractmethod
+    def set_hyperparameters(self):
+        '''
+        Set the kernel hyperparameters.
+        Each child class (2) must implement.
         '''
         pass
     
@@ -37,7 +61,7 @@ class Kernel(ABC):
     def compute(self,x1,x2):
         '''
         Compute the covariance matrix between two points.
-        Must be implemented seperately for each kernel as every kernel has a different equation.
+        Must be implemented seperately for each child class of BasicKernel.
         '''
         pass
 
@@ -77,14 +101,20 @@ class Kernel(ABC):
 class BasicKernel(Kernel):
     '''
     Class to hold basic (i.e., not combined) kernels.
+    
+    TODO:
+    -add check in __int__ for *args
     '''
     def __init__(self,*args):
+        #Kernel initializations
         Kernel.__init__(self)
+
+        #BasicKernel initializations
         self.hparams = np.array([])
         for arg in args:
             self.hparams = np.append(self.hparams,arg)
         self.n = self.hparams.size
-            
+        
     def get_size(self):
         return self.n
             
@@ -93,40 +123,29 @@ class BasicKernel(Kernel):
 
     def set_hyperparameters(self,hparams):
         self.hparams = hparams
+        self.check_size()
             
 class CombinedKernel(Kernel):
     '''
     Class to hold the combination of two kernels (e.g., sum, multiplication, etc.).
     '''
     def __init__(self,kernel1,kernel2,operation):
+        #Kernel initializations
         Kernel.__init__(self)
+        self.set_n_hparam_expect(kernel1.n_hparam_expect + kernel2.n_hparam_expect)
+
+        #CombinedKernel initializations
         self.kernel1 = kernel1
         self.kernel2 = kernel2
-        self.operation = operation
-
-    def compute(self,x1,x2):
-        if self.operation == "add":
-            return self.kernel1.compute(x1,x2) + self.kernel2.compute(x1,x2)
-        if self.operation == "mul":
-            return self.kernel1.compute(x1,x2) * self.kernel2.compute(x1,x2)
+        operationList = ["add","mul"]
+        if operation not in operationList:
+            raise NameError("Kernel operation not found/supported. Please use a valid operation.")
+        else:
+            self.operation = operation
 
     def get_size(self):
         return self.kernel1.get_size() + self.kernel2.get_size()
-        
-    def set_hyperparameters(self,hparams):
-        '''
-        Set the hyperparameters.
 
-        TODO:
-        -check size of hparams, throw error
-        '''
-        #self.kernel1.set_hyperparameters(hparams[0])
-        #self.kernel2.set_hyperparameters(hparams[1])
-
-        m = self.kernel1.get_size()
-        self.kernel1.set_hyperparameters(hparams[0:m])
-        self.kernel2.set_hyperparameters(hparams[m:])
-        
     def get_hyperparameters(self):
         '''
         Retrieves the hyperparameters.
@@ -137,7 +156,30 @@ class CombinedKernel(Kernel):
         #return np.array([self.kernel1.get_hyperparameters(),self.kernel2.get_hyperparameters()],dtype=object)
 
         return np.append(self.kernel1.get_hyperparameters(),self.kernel2.get_hyperparameters())
-        
+    
+    def set_hyperparameters(self,hparams):
+        '''
+        Set the hyperparameters.
+
+        TODO:
+        -check size of hparams, throw error
+        -option to use organizedList
+        '''
+        #self.kernel1.set_hyperparameters(hparams[0])
+        #self.kernel2.set_hyperparameters(hparams[1])
+
+        m = self.kernel1.get_size()
+        self.kernel1.set_hyperparameters(hparams[0:m])
+        self.kernel2.set_hyperparameters(hparams[m:])
+
+    def compute(self,x1,x2):
+        if self.operation == "add":
+            return self.kernel1.compute(x1,x2) + self.kernel2.compute(x1,x2)
+        elif self.operation == "mul":
+            return self.kernel1.compute(x1,x2) * self.kernel2.compute(x1,x2)
+        else:
+            raise NameError("Kernel operation not found/supported. Please use a valid operation.")
+    
 #############################################################################
 #Specific kernel definitions, all of which inherit from the BasicKernel class
 #############################################################################
@@ -145,20 +187,21 @@ class CombinedKernel(Kernel):
 class SqExp(BasicKernel):
     '''
     Squared exponential kernel.
-    See http://www.cs.toronto.edu/~duvenaud/cookbook/index.html for details.
+    See https://www.cs.toronto.edu/~duvenaud/cookbook/index.html for details.
     '''
     def __init__(self,lengthscale,variance):
+        #BasicKernel initializations
         BasicKernel.__init__(self,lengthscale,variance)
+        self.set_n_hparam_expect(2)
+
+        #SqExp initializations
         self.lengthscale = lengthscale
         self.variance = variance
 
     def set_hyperparameters(self,hparams):
         '''
-        Set the hyperparameters.
-
         TODO:
-        -implement a warning message if the number of elements in the array differs from expectation
-        -implement the warning message as a general function in base class Kernel
+        -remove!
         '''
         BasicKernel.set_hyperparameters(self,hparams)
         self.lengthscale = hparams[0]
@@ -174,15 +217,22 @@ class SqExp(BasicKernel):
 class RQ(BasicKernel):
     '''
     Rational quadratic kernel.
-    See http://www.cs.toronto.edu/~duvenaud/cookbook/index.html for details.
+    See https://www.cs.toronto.edu/~duvenaud/cookbook/index.html for details.
     '''
     def __init__(self,lengthscale,variance,alpha):
+        #BasicKernel initializations
         BasicKernel.__init__(self,lengthscale,variance,alpha)
+
+        #RQ initializations
         self.lengthscale = lengthscale
         self.variance = variance
         self.alpha = alpha
 
     def set_hyperparameters(self,hparams):
+        '''
+        TODO:
+        -remove!
+        '''
         BasicKernel.set_hyperparameters(self,hparams)
         self.lengthscale = hparams[0]
         self.variance = hparams[1]
@@ -198,15 +248,22 @@ class RQ(BasicKernel):
 class ExpSine(BasicKernel):
     '''
     Exponential sine squared kernel (Also known as periodic kernel).
-    See http://www.cs.toronto.edu/~duvenaud/cookbook/index.html for details.
+    See https://www.cs.toronto.edu/~duvenaud/cookbook/index.html for details.
     '''
     def __int__(self,lengthscale,variance,period):
+        #BasicKernel initializations
         BasicKernel.__init__(self)
+
+        #ExpSine initializations
         self.lengthscale = lengthscale
         self.variance = variance
         self.period = period
 
     def set_hyperparameters(self,hparams):
+        '''
+        TODO:
+        -remove!
+        '''
         self.lengthscale = hparams[0]
         self.variance = hparams[1]
         self.period = hparams[2]
