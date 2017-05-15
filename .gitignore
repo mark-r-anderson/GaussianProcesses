@@ -88,4 +88,4 @@ ENV/
 # Rope project settings
 .ropeproject
 
-GaussianProcess_test.ipynb
+Tests
