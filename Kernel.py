@@ -19,17 +19,18 @@ class Kernel(ABC):
         '''
         self.n_hparam_expect = n_hparam_expect
 
-    def check_size(self):
+    def check_size(self,n_hparam):
         '''
-        NOT ACTUALLY USED ANYWHERE YET!!!
-        NEED TO HAVE INPUT FOR DIMENSION OF hparam; DEFAULT TO n=self.get_size()
-
         Check that the number of hyperparameters used is as expected.
         If someone tries to provide too few/too many hyperparameters, it will give an error.
         If a kernel does not set its expected number of hyperparameters, it will give an error.
         '''
-        if not (self.get_size() == self.n_hparam_expect):
-            raise ValueError("Hyperparameter array does not match expected size of hyperparameters.")
+        errMsg = "Expected {} hyperparameters but received {}.".format(self.n_hparam_expect,n_hparam)
+        if not (n_hparam == self.n_hparam_expect):
+            if (self.n_hparam_expect < 0):
+                errMsgNeg = " A negative number indicates that the expected number of hyperparameters was not specified in the kernel definition."
+                errMsg += errMsgNeg
+            raise ValueError(errMsg)
         else:
             return True
         
@@ -122,8 +123,8 @@ class BasicKernel(Kernel):
         return self.hparams
 
     def set_hyperparameters(self,hparams):
+        self.check_size(hparams.size)
         self.hparams = hparams
-        self.check_size()
             
 class CombinedKernel(Kernel):
     '''
@@ -149,12 +150,11 @@ class CombinedKernel(Kernel):
     def get_hyperparameters(self):
         '''
         Retrieves the hyperparameters.
-        Each list and sublist respresents a kernel.
-        The innermost list will contain the arrays for the two basic kernels.
         '''
+
         #return [self.kernel1.get_hyperparameters(),self.kernel2.get_hyperparameters()]
         #return np.array([self.kernel1.get_hyperparameters(),self.kernel2.get_hyperparameters()],dtype=object)
-
+        
         return np.append(self.kernel1.get_hyperparameters(),self.kernel2.get_hyperparameters())
     
     def set_hyperparameters(self,hparams):
@@ -162,16 +162,18 @@ class CombinedKernel(Kernel):
         Set the hyperparameters.
 
         TODO:
-        -check size of hparams, throw error
         -option to use organizedList
         '''
+
         #self.kernel1.set_hyperparameters(hparams[0])
         #self.kernel2.set_hyperparameters(hparams[1])
-
+        
+        self.check_size(hparams.size)
+        
         m = self.kernel1.get_size()
         self.kernel1.set_hyperparameters(hparams[0:m])
         self.kernel2.set_hyperparameters(hparams[m:])
-
+        
     def compute(self,x1,x2):
         if self.operation == "add":
             return self.kernel1.compute(x1,x2) + self.kernel2.compute(x1,x2)
