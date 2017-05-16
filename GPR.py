@@ -125,18 +125,17 @@ class GPR:
         #If desired, can return the resulting object from SciPy optimize.
         return res
 
-    def lml(self,hparams):
+    def lml(self,hparams=None):
         '''
         Negative log marginal likelihood.
-
-        TODO:
-        -make hparams argument optional and use user-entered parameters instead
         '''
-        #Reassign hyperparameters
-        self.kernel.set_hyperparameters(hparams)
+        #Check to see if an array of hyperparameters is passed.
+        if hparams is not None:
+            #Reassign hyperparameters if an array of hyperparameters is passed.
+            self.kernel.set_hyperparameters(hparams)
 
 
-        
+            
         print(hparams)
 
 
@@ -152,12 +151,21 @@ class GPR:
         General method to sample from a distribution with mean m and covariance matrix K.
         Also accepts the number of samples desired.
         Returns n samples drawn from distribution of N~(m,K)
-
-        TODO:
-        -Fix square root
         '''
+        #Ensure K is 2D and has same number of rows and columns.
+        if (K.ndim != 2) or (K.shape[0] != K.shape[1]):
+            errMsg = "The number of rows and columns of this matrix differ ({},{}).".format(K.shape[0],K.shape[1])
+            raise TypeError(errMsg)
+
         #Generate the identity matrix.
-        I = np.matrix( np.identity( int(np.sqrt(K.size)) ) )
+        #I = np.matrix( np.eye( K.shape[0] ) )
+
+        #print(int(np.sqrt(K.size)))
+        #print(K.shape)
+        #print("")
+        #I = np.matrix( np.identity( int(np.sqrt(K.size)) ) )
+        #print(I.shape)
+        #print(I.shape)
         
         #Check that the covariance matrix is positive definite and fix if it is not.
         K = self.numeric_fix(K)
@@ -167,15 +175,37 @@ class GPR:
         L = np.matrix( np.linalg.cholesky(K) )
         
         #Generate random samples with mean **0** and covariance of the identity matrix (i.e., independent).
-        u = np.transpose( np.matrix( np.diag( np.random.normal(0,I) ) ) )
-
+        #u = np.transpose( np.matrix( np.diag( np.random.normal(0,I) ) ) )
+        v = np.random.normal(0,1,m.size)
+        v = v[:,np.newaxis]
+        
+        #print(u.shape)
+        #print(v.shape)
+        
         #Generate the desired number of samples.
         for i in range(1,n,1):
-            u = np.append( u,np.transpose(np.matrix(np.diag(np.random.normal(0,I)))),axis=1 )
+            tmp = np.random.normal(0,1,m.size)
+            tmp = tmp[:,np.newaxis]
 
+            #tmp = np.transpose(np.matrix(np.diag(np.random.normal(0,I))))
+            
+            #u = np.append( u , tmp ,axis=1 )
+            v = np.append( v , tmp , axis=1 )
+
+        #print(u)
+        #print(v)
+
+        #print(u.shape)
+        #print(v.shape)
+
+        #print(L*u)
+        #print("")
+        #print(L*np.matrix(v))
+        
         #Return the sample(s) with distribution N~(m,K).
-        return m + L*u
-
+        #return m + L*u
+        return m + L*np.matrix(v)
+        
     def positive_definite(self,K):
         '''
         Check whether a matrix is positive definite.
@@ -196,10 +226,13 @@ class GPR:
         This can help to compute the Cholesky decomposition.
         '''
         #Define the identity matrix of appropriate size.
-        I = np.matrix( np.identity( int(np.sqrt(K.size)) ) )
+        I = np.matrix( np.eye(K.shape[0]) )
 
         #Define the multiple for the identity matrix
-        epsilon = 1e-6
+        epsilon = 1e-7
+
+        #Define the "rate" at which the multiple should increase.
+        alpha = 2
         
         #Define the maximum number of iterations until giving up.
         maxIter = int(1e9)
@@ -208,11 +241,10 @@ class GPR:
         for i in range(0,maxIter,1):
             if self.positive_definite(K):
                 #If the matrix is positive definite, no need to keep adding epsilon*I and can break from loop.
-                #print(i)
+                print((alpha**i)*epsilon,i)
                 break
             #If the matrix is not positive definite, add a small multiple of the identity matrix until it is.
-            K += epsilon*I
+            K += (alpha**i)*epsilon*I
             
-        #Return the "fixed" covariance matrix.
+        #Return the positive definite covariance matrix.
         return K
-        
