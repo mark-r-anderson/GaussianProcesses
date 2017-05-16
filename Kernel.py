@@ -87,7 +87,7 @@ class Kernel(ABC):
         TODO:
         -optimize
         '''        
-        if x2 == None:
+        if x2 is None:
             x_mn,x_nm = np.meshgrid(x1,x1)
         else:
             x_mn,x_nm = np.meshgrid(x1,x2)
