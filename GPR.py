@@ -65,6 +65,10 @@ class GPR:
         #Compute the variance by taking the diagonal elements
         y_star_cov = K_star_star - K_star * self.K_inv * np.transpose(K_star)
         y_star_var = np.diag(y_star_cov)
+
+        #print(np.diag(K_star_star))
+        #print(np.diag(K_star * self.K_inv * np.transpose(K_star)))
+        #print(y_star_var)
     
         if returnCov:
             #Return the mean and covariance matrix
@@ -131,9 +135,13 @@ class GPR:
         #Reassign hyperparameters
         self.kernel.set_hyperparameters(hparams)
 
+
+        
+        print(hparams)
+
+
+        
         #Covariance matrix must be recomputed and inverted every time!
-        #K = self.kernel.get_cov_mat(self.x)
-        #K_inv = np.linalg.inv(K)
         K,K_inv = self.compute_K(self.x,self.x)
 
         #Return the negative log marginal likelihood (scalar).
@@ -153,6 +161,7 @@ class GPR:
         
         #Check that the covariance matrix is positive definite and fix if it is not.
         K = self.numeric_fix(K)
+        print(self.positive_definite(K))
         
         #Compute the Cholesky decomposition.
         L = np.matrix( np.linalg.cholesky(K) )
@@ -190,7 +199,7 @@ class GPR:
         I = np.matrix( np.identity( int(np.sqrt(K.size)) ) )
 
         #Define the multiple for the identity matrix
-        epsilon = 1e-14
+        epsilon = 1e-6
         
         #Define the maximum number of iterations until giving up.
         maxIter = int(1e9)
@@ -199,10 +208,11 @@ class GPR:
         for i in range(0,maxIter,1):
             if self.positive_definite(K):
                 #If the matrix is positive definite, no need to keep adding epsilon*I and can break from loop.
+                #print(i)
                 break
             #If the matrix is not positive definite, add a small multiple of the identity matrix until it is.
             K += epsilon*I
-
+            
         #Return the "fixed" covariance matrix.
         return K
         

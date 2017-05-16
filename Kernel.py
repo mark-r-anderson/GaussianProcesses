@@ -197,7 +197,7 @@ class SqExp(BasicKernel):
         #SqExp initializations
         self.lengthscale = lengthscale
         self.variance = variance
-
+        
     def set_hyperparameters(self,hparams):
         '''
         TODO:
@@ -222,7 +222,8 @@ class RQ(BasicKernel):
     def __init__(self,lengthscale,variance,alpha):
         #BasicKernel initializations
         BasicKernel.__init__(self,lengthscale,variance,alpha)
-
+        self.set_n_hparam_expect(3)
+        
         #RQ initializations
         self.lengthscale = lengthscale
         self.variance = variance
@@ -250,9 +251,10 @@ class ExpSine(BasicKernel):
     Exponential sine squared kernel (Also known as periodic kernel).
     See https://www.cs.toronto.edu/~duvenaud/cookbook/index.html for details.
     '''
-    def __int__(self,lengthscale,variance,period):
+    def __init__(self,lengthscale,variance,period):
         #BasicKernel initializations
         BasicKernel.__init__(self)
+        self.set_n_hparam_expect(3)
 
         #ExpSine initializations
         self.lengthscale = lengthscale
@@ -274,3 +276,29 @@ class ExpSine(BasicKernel):
         '''
         
         return self.variance**2 * np.exp( - 2*np.sin(np.pi*abs(x1-x2)/self.period) / (self.lengthscale**2) )
+
+#class WhiteNoise(BasicKernel):
+#    '''
+#    White noise kernel.
+#
+#    DON'T USE YET
+#    '''
+#    def __init__(self,noise):
+#        #BasicKernel initializations
+#        BasicKernel.__init__(self,noise)
+#        self.set_n_hparam_expect(1)
+#
+#        #WhiteNoise initializations
+#        self.noise = noise
+#        
+#    def set_hyperparameters(self,hparams):
+#        BasicKernel.set_hyperparameters(self,hparams)
+#        self.noise = hparams[0]
+#        if hparams<0:
+#            self.noise = 1e-3
+#        
+#    def compute(self,x1,x2):
+#        if x1.shape[0] == x1.shape[1]:
+#            return self.noise * np.identity(int(np.sqrt(x1.size)))
+#        else:
+#            return np.zeros(x1.shape)
