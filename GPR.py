@@ -133,12 +133,8 @@ class GPR:
         if hparams is not None:
             #Reassign hyperparameters if an array of hyperparameters is passed.
             self.kernel.set_hyperparameters(hparams)
-
-
             
-        print(hparams)
-
-
+        #print(hparams)
         
         #Covariance matrix must be recomputed and inverted every time!
         K,K_inv = self.compute_K(self.x,self.x)
@@ -157,53 +153,25 @@ class GPR:
             errMsg = "The number of rows and columns of this matrix differ ({},{}).".format(K.shape[0],K.shape[1])
             raise TypeError(errMsg)
 
-        #Generate the identity matrix.
-        #I = np.matrix( np.eye( K.shape[0] ) )
-
-        #print(int(np.sqrt(K.size)))
-        #print(K.shape)
-        #print("")
-        #I = np.matrix( np.identity( int(np.sqrt(K.size)) ) )
-        #print(I.shape)
-        #print(I.shape)
-        
         #Check that the covariance matrix is positive definite and fix if it is not.
         K = self.numeric_fix(K)
-        print(self.positive_definite(K))
+        #print(self.positive_definite(K))
         
         #Compute the Cholesky decomposition.
         L = np.matrix( np.linalg.cholesky(K) )
         
         #Generate random samples with mean **0** and covariance of the identity matrix (i.e., independent).
-        #u = np.transpose( np.matrix( np.diag( np.random.normal(0,I) ) ) )
         v = np.random.normal(0,1,m.size)
         v = v[:,np.newaxis]
-        
-        #print(u.shape)
-        #print(v.shape)
         
         #Generate the desired number of samples.
         for i in range(1,n,1):
             tmp = np.random.normal(0,1,m.size)
             tmp = tmp[:,np.newaxis]
 
-            #tmp = np.transpose(np.matrix(np.diag(np.random.normal(0,I))))
-            
-            #u = np.append( u , tmp ,axis=1 )
             v = np.append( v , tmp , axis=1 )
-
-        #print(u)
-        #print(v)
-
-        #print(u.shape)
-        #print(v.shape)
-
-        #print(L*u)
-        #print("")
-        #print(L*np.matrix(v))
-        
+    
         #Return the sample(s) with distribution N~(m,K).
-        #return m + L*u
         return m + L*np.matrix(v)
         
     def positive_definite(self,K):
@@ -241,7 +209,7 @@ class GPR:
         for i in range(0,maxIter,1):
             if self.positive_definite(K):
                 #If the matrix is positive definite, no need to keep adding epsilon*I and can break from loop.
-                print((alpha**i)*epsilon,i)
+                #print((alpha**i)*epsilon,i)
                 break
             #If the matrix is not positive definite, add a small multiple of the identity matrix until it is.
             K += (alpha**i)*epsilon*I

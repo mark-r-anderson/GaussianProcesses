@@ -150,6 +150,9 @@ class CombinedKernel(Kernel):
     def get_hyperparameters(self):
         '''
         Retrieves the hyperparameters.
+
+        TODO:
+        -option to use organizedList
         '''
 
         #return [self.kernel1.get_hyperparameters(),self.kernel2.get_hyperparameters()]
@@ -232,10 +235,6 @@ class RQ(BasicKernel):
         self.alpha = alpha
 
     def set_hyperparameters(self,hparams):
-        '''
-        TODO:
-        -remove!
-        '''
         BasicKernel.set_hyperparameters(self,hparams)
         self.lengthscale = hparams[0]
         self.variance = hparams[1]
@@ -264,10 +263,6 @@ class ExpSine(BasicKernel):
         self.period = period
 
     def set_hyperparameters(self,hparams):
-        '''
-        TODO:
-        -remove!
-        '''
         self.lengthscale = hparams[0]
         self.variance = hparams[1]
         self.period = hparams[2]
