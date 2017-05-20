@@ -102,46 +102,26 @@ class Kernel(ABC):
 class BasicKernel(Kernel):
     '''
     Class to hold basic (i.e., not combined) kernels.
-    
-    TODO:
-    -add check in __int__ for *args
     '''
-    def __init__(self,*args,**kwargs):
+    def __init__(self,**kwargs):
         #Kernel initializations
         Kernel.__init__(self)
 
         #BasicKernel initializations
-        self.hparams = np.array([])
-        for arg in args:
-            self.hparams = np.append(self.hparams,arg)
-
-        #BasicKernel initializations (keyworded arguments)
-        #Intend to fully switch over to this soon
         self.hparams2 = {}
         if kwargs is not None:
             for key,value in kwargs.items():
                 self.hparams2[key] = value
-        
-        self.n = self.hparams.size
+        self.n = len(self.hparams2)
         
     def get_size(self):
         return self.n
     
     def get_hyperparameters(self):
-        #for key in self.hparams2:
-        #    hparams_array.append(hparams_array,self.hparams2[key])
-        #print(hparams_array)
-        #return self.hparams
-        
         return list(self.hparams2.values())
         
     def set_hyperparameters(self,hparams):
-        '''
-        -here would be a good place to pass a dictionary.
-        -problems may occur wth the CombinedKernel and optimizer, though
-        '''
         self.check_size(hparams.size)
-        self.hparams = hparams
 
         i=0
         for key in self.hparams2.keys():
@@ -170,23 +150,9 @@ class CombinedKernel(Kernel):
         return self.kernel1.get_size() + self.kernel2.get_size()
 
     def get_hyperparameters(self):
-        '''
-        Retrieves the hyperparameters.
-        '''
-
-        #return [self.kernel1.get_hyperparameters(),self.kernel2.get_hyperparameters()]
-        #return np.array([self.kernel1.get_hyperparameters(),self.kernel2.get_hyperparameters()],dtype=object)
-        #return np.append(self.kernel1.get_hyperparameters(),self.kernel2.get_hyperparameters())
-
         return self.kernel1.get_hyperparameters()+self.kernel2.get_hyperparameters()
     
     def set_hyperparameters(self,hparams):
-        '''
-        Set the hyperparameters.
-
-        TODO:
-        -option to use organizedList
-        '''
         self.check_size(hparams.size)
         m = self.kernel1.get_size()
         self.kernel1.set_hyperparameters(hparams[0:m])
@@ -210,14 +176,13 @@ class SqExp(BasicKernel):
     See https://www.cs.toronto.edu/~duvenaud/cookbook/index.html for details.
     '''
     def __init__(self,lengthscale,variance):
-        BasicKernel.__init__(self,lengthscale,variance,lengthscale=lengthscale,variance=variance)
+        BasicKernel.__init__(self,lengthscale=lengthscale,variance=variance)
         self.set_n_hparam_expect(2)
      
     def compute(self,x1,x2):
         '''
         Return squared exponential result as a numpy array.
         '''
-        #return self.variance**2 * np.exp( -(x1-x2)**2 / (2*self.lengthscale**2) )
         return self.hparams2['variance']**2 * np.exp( -(x1-x2)**2 / (2*self.hparams2['lengthscale']**2) )
         
 class RQ(BasicKernel):
@@ -226,15 +191,13 @@ class RQ(BasicKernel):
     See https://www.cs.toronto.edu/~duvenaud/cookbook/index.html for details.
     '''
     def __init__(self,lengthscale,variance,alpha):
-        BasicKernel.__init__(self,lengthscale,variance,alpha,
-                             lengthscale=lengthscale,variance=variance,alpha=alpha)
+        BasicKernel.__init__(self,lengthscale=lengthscale,variance=variance,alpha=alpha)
         self.set_n_hparam_expect(3)
         
     def compute(self,x1,x2):
         '''
         Return rational quadratic result as a numpy array.
-        '''        
-        #return self.variance**2 * ( 1 + np.exp( -(x1-x2)**2 / (2*self.alpha*self.lengthscale**2) ) )
+        '''
         return self.hparams2['variance']**2 * ( 1 + np.exp( -(x1-x2)**2 / (2*self.hparams2['alpha']*self.hparams2['lengthscale']**2) ) )
     
 class ExpSine(BasicKernel):
@@ -243,15 +206,13 @@ class ExpSine(BasicKernel):
     See https://www.cs.toronto.edu/~duvenaud/cookbook/index.html for details.
     '''
     def __init__(self,lengthscale,variance,period):
-        BasicKernel.__init__(self,lengthscale,variance,period,
-                             lengthscale=lengthscale,variance=variance,period=period)
+        BasicKernel.__init__(self,lengthscale=lengthscale,variance=variance,period=period)
         self.set_n_hparam_expect(3)
         
     def compute(self,x1,x2):
         '''
         Return exponential sine (periodic) result as a numpy array.
-        '''        
-        #return self.variance**2 * np.exp( - 2*np.sin(np.pi*abs(x1-x2)/self.period) / (self.lengthscale**2) )
+        '''
         return self.hparams2['variance']**2 * np.exp( - 2*np.sin(np.pi*abs(x1-x2)/self.hparams2['period']) / (self.hparams2['lengthscale']**2) )
 
 #class WhiteNoise(BasicKernel):
