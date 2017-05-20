@@ -114,7 +114,9 @@ class GPR:
         -Test this method way more to ensure it performs as expected
         '''
         #Set the initial hyperparameters to the ones entered by the user.
-        hparams0 = self.kernel.get_hyperparameters()
+        #hparams0 = self.kernel.get_hyperparameters()
+        hparams0 = np.array( self.kernel.get_hyperparameters() )
+        #print(hparams0)
         
         #Minimize the negative log marginal likelihood based on these initial parameters.
         res = minimize(self.lml,hparams0,method='Nelder-Mead', tol=1e-6)
