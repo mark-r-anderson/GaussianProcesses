@@ -49,6 +49,10 @@ class Kernel(ABC):
         Each child class (2) must implement.
         '''
         pass
+
+    @abstractmethod
+    def get_hyperparameters_bounds(self):
+        pass
     
     @abstractmethod
     def set_hyperparameters(self):
@@ -109,6 +113,7 @@ class BasicKernel(Kernel):
 
         #BasicKernel initializations
         self.hparams2 = {}
+        self.hparams_bounds = {}
         if kwargs is not None:
             for key,value in kwargs.items():
                 self.hparams2[key] = value
@@ -119,6 +124,9 @@ class BasicKernel(Kernel):
     
     def get_hyperparameters(self):
         return list(self.hparams2.values())
+
+    def get_hyperparameters_bounds(self):
+        return tuple(self.hparams_bounds.values())
         
     def set_hyperparameters(self,hparams):
         self.check_size(hparams.size)
@@ -127,6 +135,12 @@ class BasicKernel(Kernel):
         for key in self.hparams2.keys():
             self.hparams2[key] = hparams[i]
             i+=1
+
+    def set_hyperparameters_bounds(self,**kwargs):
+        if kwargs is not None:
+            for key,value in kwargs.items():
+                self.hparams_bounds[key] = value
+        
     
 class CombinedKernel(Kernel):
     '''
@@ -150,9 +164,27 @@ class CombinedKernel(Kernel):
         return self.kernel1.get_size() + self.kernel2.get_size()
 
     def get_hyperparameters(self):
+        '''
+        Returns a list of hyperparameters.
+        This method is dependent on the order of the hyperparameters and is dangerous.
+        It should only be used for the optimizer, since the order matters for that.
+        '''
         return self.kernel1.get_hyperparameters()+self.kernel2.get_hyperparameters()
+
+    def get_hyperparameters_bounds(self):
+        '''
+        Returns a tuple of hyperparameter bounds.
+        This method is dependent on the order of the hyperparameters and bounds and is *very* dangerous.
+        It should only be used for the optimizer, since the order matters for that.
+        '''
+        return self.kernel1.get_hyperparameters_bounds()+self.kernel2.get_hyperparameters_bounds()
     
     def set_hyperparameters(self,hparams):
+        '''
+        Sets the hyperparameter bounds.
+        This method is dependent on the order of the hyperparameters and is dangerous.
+        It should only be used for the optimizer, since the order matters for that.
+        '''
         self.check_size(hparams.size)
         m = self.kernel1.get_size()
         self.kernel1.set_hyperparameters(hparams[0:m])
@@ -177,8 +209,9 @@ class SqExp(BasicKernel):
     '''
     def __init__(self,lengthscale,variance):
         BasicKernel.__init__(self,lengthscale=lengthscale,variance=variance)
+        self.set_hyperparameters_bounds(lengthscale_bounds=(1e-5,1e5),variance_bounds=(1e-5,1e5))
         self.set_n_hparam_expect(2)
-     
+        
     def compute(self,x1,x2):
         '''
         Return squared exponential result as a numpy array.
@@ -192,6 +225,9 @@ class RQ(BasicKernel):
     '''
     def __init__(self,lengthscale,variance,alpha):
         BasicKernel.__init__(self,lengthscale=lengthscale,variance=variance,alpha=alpha)
+        self.set_hyperparameters_bounds(lengthscale_bounds=(1e-5,1e5),
+                                        variance_bounds=(1e-5,1e5),
+                                        alpha_bounds=(1e-5,1e5))
         self.set_n_hparam_expect(3)
         
     def compute(self,x1,x2):
@@ -207,6 +243,9 @@ class ExpSine(BasicKernel):
     '''
     def __init__(self,lengthscale,variance,period):
         BasicKernel.__init__(self,lengthscale=lengthscale,variance=variance,period=period)
+        self.set_hyperparameters_bounds(lengthscale_bounds=(1e-5,1e5),
+                                        variance_bounds=(1e-5,1e5),
+                                        period_bounds=(1e-5,1e5))
         self.set_n_hparam_expect(3)
         
     def compute(self,x1,x2):
@@ -215,28 +254,22 @@ class ExpSine(BasicKernel):
         '''
         return self.hparams2['variance']**2 * np.exp( - 2*np.sin(np.pi*abs(x1-x2)/self.hparams2['period']) / (self.hparams2['lengthscale']**2) )
 
-#class WhiteNoise(BasicKernel):
-#    '''
-#    White noise kernel.
-#
-#    DON'T USE YET
-#    '''
-#    def __init__(self,noise):
-#        #BasicKernel initializations
-#        BasicKernel.__init__(self,noise)
-#        self.set_n_hparam_expect(1)
-#
-#        #WhiteNoise initializations
-#        self.noise = noise
-#        
-#    def set_hyperparameters(self,hparams):
-#        BasicKernel.set_hyperparameters(self,hparams)
-#        self.noise = hparams[0]
-#        if hparams<0:
-#            self.noise = 1e-3
-#        
-#    def compute(self,x1,x2):
-#        if x1.shape[0] == x1.shape[1]:
-#            return self.noise * np.identity(int(np.sqrt(x1.size)))
-#        else:
-#            return np.zeros(x1.shape)
+class WhiteNoise(BasicKernel):
+    '''
+    White noise kernel.
+    '''
+    def __init__(self,noise):
+        BasicKernel.__init__(self,noise=noise)
+        self.set_hyperparameters_bounds(noise_bounds=(1e-5,1e5))
+        self.set_n_hparam_expect(1)
+                
+    def compute(self,x1,x2):
+        '''
+        Return the white noise results.
+        This method is not great. It assumes that the matrix will be all zeros for K_star.
+        As well, if the training and test set happen to be the same shape, this will fail completely.
+        '''
+        if x1.shape[0] == x1.shape[1]:
+            return self.hparams2['noise'] * np.identity(int(np.sqrt(x1.size)))
+        else:
+            return np.zeros(x1.shape)

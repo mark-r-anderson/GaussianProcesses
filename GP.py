@@ -105,21 +105,20 @@ class GPR:
         #Return n samples for distribution of N~(m,K)
         return self.get_samples(m,K,n)
 
-    def optimize(self):
+    def optimize(self,method='SLSQP'):
         '''
         Optimize over the hyperparameters.
 
         TODO:
-        -Add argument to specify optimization method
         -Test this method way more to ensure it performs as expected
         '''
         #Set the initial hyperparameters to the ones entered by the user.
-        #hparams0 = self.kernel.get_hyperparameters()
         hparams0 = np.array( self.kernel.get_hyperparameters() )
+        hparams_bounds = self.kernel.get_hyperparameters_bounds()
         #print(hparams0)
         
         #Minimize the negative log marginal likelihood based on these initial parameters.
-        res = minimize(self.lml,hparams0,method='Nelder-Mead', tol=1e-6)
+        res = minimize(self.lml,hparams0,method=method, bounds=hparams_bounds ,tol=1e-6)
 
         #Update the covariance matrices for the training data (test matrices updated in predict method).
         self.set_K()
