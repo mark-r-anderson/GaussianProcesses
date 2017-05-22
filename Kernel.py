@@ -234,7 +234,7 @@ class RQ(BasicKernel):
         '''
         Return rational quadratic result as a numpy array.
         '''
-        return self.hparams2['variance']**2 * ( 1 + np.exp( -(x1-x2)**2 / (2*self.hparams2['alpha']*self.hparams2['lengthscale']**2) ) )
+        return self.hparams2['variance']**2 * ( 1 + (x1-x2)**2 / (2*self.hparams2['alpha']*self.hparams2['lengthscale']**2) )**(-self.hparams2['alpha'])
     
 class ExpSine(BasicKernel):
     '''
@@ -252,7 +252,7 @@ class ExpSine(BasicKernel):
         '''
         Return exponential sine (periodic) result as a numpy array.
         '''
-        return self.hparams2['variance']**2 * np.exp( - 2*np.sin(np.pi*abs(x1-x2)/self.hparams2['period']) / (self.hparams2['lengthscale']**2) )
+        return self.hparams2['variance']**2 * np.exp( - 2*np.sin(np.pi*abs(x1-x2)/self.hparams2['period'])**2 / (self.hparams2['lengthscale']**2) )
 
 class WhiteNoise(BasicKernel):
     '''
