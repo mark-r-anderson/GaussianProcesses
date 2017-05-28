@@ -1,13 +1,14 @@
 import numpy as np
+import scipy as sp
 from scipy.optimize import minimize
 
 ###################
 #Gaussian processes
 ###################
-            
-class GPR:
+
+class GP:
     '''
-    General class for performing Gaussian process regression.
+    General class to hold parameters common to both GPR and GPC.
     '''
     def __init__(self,kernel):
         self.kernel = kernel
@@ -15,18 +16,7 @@ class GPR:
         self.K_inv = np.array([])
         self.x = np.array([])
         self.y = np.array([])
-        
-    def train(self,x,y):
-        '''
-        Compute and invert the training covariance matrix and store the training data.
-        '''
-        #Store x and y
-        self.x = x
-        self.y = y
 
-        #Compute the covariance matrix between the test data and itself
-        self.set_K()
-        
     def compute_K(self,x1,x2):
         '''
         Recompute K, K_inv and return the result.
@@ -45,6 +35,67 @@ class GPR:
         Recompute K, K_inv and set the attributes to the result.
         '''
         self.K, self.K_inv = self.compute_K(self.x,self.x)
+
+    def positive_definite(self,K):
+        '''
+        Check whether a matrix is positive definite.
+        A matrix must be positive definite in order to compute the Cholesky decomposition.
+        '''
+        #For every eigenvalue.
+        for eigval in np.linalg.eigvals(K):
+            if eigval <= 0:
+                #If an eigenvalue is not positive, then the matrix is not positive definite.
+                return False
+
+        #If every eigenvalue is positive, then the matrix is positive definite.
+        return True
+
+    def numeric_fix(self,K):
+        '''
+        Add a small multiple of the identity matrix to the covariance matrix.
+        This can help to compute the Cholesky decomposition.
+        '''
+        #Define the identity matrix of appropriate size.
+        I = np.matrix( np.eye(K.shape[0]) )
+
+        #Define the multiple for the identity matrix
+        epsilon = 1e-7
+
+        #Define the "rate" at which the multiple should increase.
+        alpha = 2
+        
+        #Define the maximum number of iterations until giving up.
+        maxIter = int(1e9)
+
+        #Loop for the maximum number of iterations.
+        for i in range(0,maxIter,1):
+            if self.positive_definite(K):
+                #If the matrix is positive definite, no need to keep adding epsilon*I and can break from loop.
+                #print((alpha**i)*epsilon,i)
+                break
+            #If the matrix is not positive definite, add a small multiple of the identity matrix until it is.
+            K += (alpha**i)*epsilon*I
+            
+        #Return the positive definite covariance matrix.
+        return K
+        
+class GPR(GP):
+    '''
+    General class for performing Gaussian process regression.
+    '''
+    def __init__(self,kernel):
+        GP.__init__(self,kernel)
+        
+    def train(self,x,y):
+        '''
+        Compute and invert the training covariance matrix and store the training data.
+        '''
+        #Store x and y
+        self.x = x
+        self.y = y
+
+        #Compute the covariance matrix between the test data and itself
+        self.set_K()
         
     def predict(self,x_star,returnCov=True):
         '''
@@ -65,10 +116,6 @@ class GPR:
         #Compute the variance by taking the diagonal elements
         y_star_cov = K_star_star - K_star * self.K_inv * np.transpose(K_star)
         y_star_var = np.diag(y_star_cov)
-
-        #print(np.diag(K_star_star))
-        #print(np.diag(K_star * self.K_inv * np.transpose(K_star)))
-        #print(y_star_var)
     
         if returnCov:
             #Return the mean and covariance matrix
@@ -174,46 +221,190 @@ class GPR:
     
         #Return the sample(s) with distribution N~(m,K).
         return m + L*np.matrix(v)
+
+class GPCB(GP):
+    '''
+    General class for performing Gaussian process classification (binary case).
+    '''
+    def __init__(self,kernel):
+        GP.__init__(self,kernel)
+
+    def train(self,x,y):
+        '''
+        Compute and invert the training covariance matrix and store the training data.
+        '''
+        #Store x and y
+        self.x = x
+        self.y = y
+
+        #Compute the covariance matrix between the test data and itself
+        self.set_K()
+
+    def predict(self,x_star,map_prediction=True):
+        #Obtain optimal value of f_hat
+        f_hat = np.zeros(self.y.size)
+        f_hat = self.newton_method(f_hat,self.y,self.K_inv)
         
-    def positive_definite(self,K):
-        '''
-        Check whether a matrix is positive definite.
-        A matrix must be positive definite in order to compute the Cholesky decomposition.
-        '''
-        #For every eigenvalue.
-        for eigval in np.linalg.eigvals(K):
-            if eigval <= 0:
-                #If an eigenvalue is not positive, then the matrix is not positive definite.
-                return False
+        #Compute the covariance matrix between the test data and the training data.
+        K_star = self.kernel.get_cov_mat(self.x,x_star)
 
-        #If every eigenvalue is positive, then the matrix is positive definite.
-        return True
+        #Compute the covariance matrix between the training data and itself.
+        K_star_star = self.kernel.get_cov_mat(x_star,x_star)
 
-    def numeric_fix(self,K):
-        '''
-        Add a small multiple of the identity matrix to the covariance matrix.
-        This can help to compute the Cholesky decomposition.
-        '''
-        #Define the identity matrix of appropriate size.
-        I = np.matrix( np.eye(K.shape[0]) )
+        #f_hat_tmp = np.reshape( np.array(f_hat),f_hat.size )
+        W = -np.matrix( np.diag(self.ddll2(f_hat)) )
+        K_prime = self.K + np.linalg.inv(W)
+        K_prime_inv = np.linalg.inv(K_prime)
 
-        #Define the multiple for the identity matrix
-        epsilon = 1e-7
-
-        #Define the "rate" at which the multiple should increase.
-        alpha = 2
+        #Compute the mean (each row of K_star adds another element to the array)
+        f_star_mean = np.dot(K_star*self.K_inv,f_hat)
+        pi_hat_star_mean = self.pi(f_star_mean) #the sigmoid of the mean of the expectation (MAP prediction)
         
-        #Define the maximum number of iterations until giving up.
-        maxIter = int(1e9)
+        if map_prediction is True:
+            return pi_hat_star_mean
 
-        #Loop for the maximum number of iterations.
-        for i in range(0,maxIter,1):
-            if self.positive_definite(K):
-                #If the matrix is positive definite, no need to keep adding epsilon*I and can break from loop.
-                #print((alpha**i)*epsilon,i)
-                break
-            #If the matrix is not positive definite, add a small multiple of the identity matrix until it is.
-            K += (alpha**i)*epsilon*I
+        #Compute the variance by taking the diagonal elements
+        f_star_cov = K_star_star - K_star * K_prime_inv * np.transpose(K_star)
+        f_star_var = np.diag(f_star_cov)
+
+        f_star_mean = np.reshape(np.array(f_star_mean),f_star_mean.size)
+        
+        #MacKay approximation of the integral
+        pi_star_mean = self.pi(self.kappa(f_star_var)*f_star_mean)
+        return pi_star_mean
+        
+    def kappa(self,f_star_var):
+        return np.sqrt( ( 1+np.pi*f_star_var/8 )**(-1) )
+
+    def pi(self,f):
+        return 1.0/(1.0+np.exp(-f))
+    
+    def dll2(self,f,y):
+        return (y+1)/2.0 - self.pi(f)
+
+    def ddll2(self,f):
+        return -self.pi(f)*(1.0-self.pi(f))
+
+    def f_new(self,f,y,K_inv):
+        W = -np.diag(self.ddll2(f))
+        #FIX THIS TO RETURN ARRAY PROPERLY!!!
+        term1 = np.array( np.linalg.inv( (K_inv+W) ) )
+        term2 = np.matmul(W,f) + self.dll2(f,y)
+        f_new = np.dot(term1,term2)
+        return f_new
+        
+    def newton_method(self,f_hat_guess,y,K_inv):
+        dist = 10000
+        f_hat = f_hat_guess
+        while(dist>0.001):
+            f_hat_new = self.f_new(f_hat,y,K_inv)
+            dist = np.linalg.norm(f_hat_new - f_hat)
+            f_hat = f_hat_new
             
-        #Return the positive definite covariance matrix.
-        return K
+        return f_hat
+
+class GPC(GP):
+    '''
+    General class for performing Gaussian process classification (binary case).
+    '''
+    def __init__(self,kernel):
+        GP.__init__(self,kernel)
+
+        self.C = -1
+        self.n = -1
+
+        self.x_c = np.array([])
+        self.K_c = np.array([])
+        self.K_c_inv = np.array([])
+
+    def train(self,x,y,C):
+        '''
+        Compute and invert the training covariance matrix and store the training data.
+        '''
+        self.n = int(y.size/C)
+        self.C = C
+        
+        #Store x and y, and also x_c (since x is just a repeat of x_c n times)
+        self.x = x
+        self.x_c = x[0:self.n]
+        self.y = y
+
+        #Compute the covariance matrix between the test data and itself for one class.
+        K_c,K_c_inv = self.compute_K(self.x_c,self.x_c)
+        self.K_c = K_c
+        self.K_c_inv = K_c_inv
+
+        #Compute the covariance matrix between the test data and itself for all classes.
+        K = K_c
+        for i in range(1,C,1):
+            K = sp.linalg.block_diag(K,K_c)
+        K_inv = np.linalg.inv(K)
+        self.K = K
+        self.K_inv = K_inv
+
+    def predict(self,x_star,map_prediction=True):
+        #Obtain optimal value of f_hat
+        f_hat = np.zeros(self.y.size)
+        f_hat = self.newton_method_multi(f_hat,self.y,self.K_inv)
+        
+        #Compute the covariance matrix between the test data and the training data.
+        K_star = self.kernel.get_cov_mat(self.x_c,x_star)
+
+        #Compute the covariance matrix between the training data and itself.
+        K_star_star = self.kernel.get_cov_mat(x_star,x_star)
+
+        #Compute the mean (each row of K_star adds another element to the array)
+        #FIX THIS!!!
+        f_star_mean = K_star*self.K_c_inv*np.transpose(np.matrix(f_hat[0:self.n]))
+        #pi_hat_star_mean = self.pi(f_star_mean) #the sigmoid of the mean of the expectation (MAP prediction)
+
+        return f_star_mean
+        
+    def softmax(self,f):
+        f_m = np.reshape(f,(self.C,self.n))
+        pi = np.array([])
+        
+        for i in range(0,f.size,1):
+            index = (i)%(self.n)
+            f_i = f_m[:,index]
+            
+            num = np.exp(f[i])
+            den = np.sum( np.exp(f_i) )
+            
+            pi = np.append(pi,num/den)
+            
+        return pi
+
+    def Pi(self,pi):
+        pi = np.reshape(pi,(self.C,self.n))
+        
+        Pi = np.diag(pi[0,:]) #initialize
+        for i in range(1,pi.shape[0],1):
+            Pi = np.vstack((Pi,np.diag(pi[i,:])))
+            
+        return Pi
+
+    def PiPiT(self,pi):
+        BigPi = self.Pi(pi)
+        return np.dot(BigPi,np.transpose(BigPi))
+
+    def f_new_multi(self,f,y,K_inv):
+        pi = self.softmax(f)
+        BigPiPiT = self.PiPiT(pi)
+        W = np.diag(pi)-BigPiPiT
+        
+        term1 = np.linalg.inv( (K_inv+W) )
+        term2 = np.dot(W,f) + y - pi
+
+        f_new = np.dot(term1,term2)
+        return f_new
+
+    def newton_method_multi(self,f_hat_guess,y,K_inv):
+        dist = 10000
+        f_hat = f_hat_guess
+        while(dist>0.001):
+            f_hat_new = self.f_new_multi(f_hat,y,K_inv)
+            dist = np.linalg.norm(f_hat_new - f_hat)
+            f_hat = f_hat_new
+            
+        return f_hat
