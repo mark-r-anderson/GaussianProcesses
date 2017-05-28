@@ -78,7 +78,11 @@ class GP:
             
         #Return the positive definite covariance matrix.
         return K
-        
+
+############################
+#Gaussian process regression
+############################
+
 class GPR(GP):
     '''
     General class for performing Gaussian process regression.
@@ -108,13 +112,10 @@ class GPR(GP):
         K_star_star = self.kernel.get_cov_mat(x_star,x_star)
         
         #Compute the mean (each row of K_star adds another element to the array)
-        y_star_mean = np.array( K_star * self.K_inv * np.transpose(np.matrix(self.y)) )
+        y_star_mean = np.dot( np.dot(K_star,self.K_inv) , self.y )
         
-        #Remove the extra dimension for purposes of plotting later on (not really required, but convenient)
-        y_star_mean = np.reshape(y_star_mean,(y_star_mean.size,))
-    
         #Compute the variance by taking the diagonal elements
-        y_star_cov = K_star_star - K_star * self.K_inv * np.transpose(K_star)
+        y_star_cov = K_star_star - np.dot( np.dot(K_star,self.K_inv) , np.transpose(K_star))
         y_star_var = np.diag(y_star_cov)
     
         if returnCov:
@@ -155,9 +156,6 @@ class GPR(GP):
     def optimize(self,method='SLSQP'):
         '''
         Optimize over the hyperparameters.
-
-        TODO:
-        -Test this method way more to ensure it performs as expected
         '''
         #Set the initial hyperparameters to the ones entered by the user.
         hparams0 = np.array( self.kernel.get_hyperparameters() )
@@ -222,6 +220,10 @@ class GPR(GP):
         #Return the sample(s) with distribution N~(m,K).
         return m + L*np.matrix(v)
 
+#################################
+#Gaussian process classification
+#################################
+
 class GPCB(GP):
     '''
     General class for performing Gaussian process classification (binary case).
@@ -252,22 +254,20 @@ class GPCB(GP):
         K_star_star = self.kernel.get_cov_mat(x_star,x_star)
 
         #f_hat_tmp = np.reshape( np.array(f_hat),f_hat.size )
-        W = -np.matrix( np.diag(self.ddll2(f_hat)) )
+        W = -np.diag(self.ddll2(f_hat))
         K_prime = self.K + np.linalg.inv(W)
         K_prime_inv = np.linalg.inv(K_prime)
 
         #Compute the mean (each row of K_star adds another element to the array)
-        f_star_mean = np.dot(K_star*self.K_inv,f_hat)
+        f_star_mean = np.dot( np.dot(K_star,self.K_inv) , f_hat )
         pi_hat_star_mean = self.pi(f_star_mean) #the sigmoid of the mean of the expectation (MAP prediction)
         
         if map_prediction is True:
             return pi_hat_star_mean
 
         #Compute the variance by taking the diagonal elements
-        f_star_cov = K_star_star - K_star * K_prime_inv * np.transpose(K_star)
+        f_star_cov = K_star_star - np.dot( np.dot(K_star,K_prime_inv) , np.transpose(K_star) )
         f_star_var = np.diag(f_star_cov)
-
-        f_star_mean = np.reshape(np.array(f_star_mean),f_star_mean.size)
         
         #MacKay approximation of the integral
         pi_star_mean = self.pi(self.kappa(f_star_var)*f_star_mean)
@@ -287,11 +287,9 @@ class GPCB(GP):
 
     def f_new(self,f,y,K_inv):
         W = -np.diag(self.ddll2(f))
-        #FIX THIS TO RETURN ARRAY PROPERLY!!!
-        term1 = np.array( np.linalg.inv( (K_inv+W) ) )
+        term1 = np.linalg.inv( (K_inv+W) )
         term2 = np.matmul(W,f) + self.dll2(f,y)
-        f_new = np.dot(term1,term2)
-        return f_new
+        return np.dot(term1,term2)
         
     def newton_method(self,f_hat_guess,y,K_inv):
         dist = 10000
@@ -342,7 +340,7 @@ class GPC(GP):
         self.K = K
         self.K_inv = K_inv
 
-    def predict(self,x_star,map_prediction=True):
+    def predict(self,x_star,class_number=1):
         #Obtain optimal value of f_hat
         f_hat = np.zeros(self.y.size)
         f_hat = self.newton_method_multi(f_hat,self.y,self.K_inv)
@@ -354,8 +352,9 @@ class GPC(GP):
         K_star_star = self.kernel.get_cov_mat(x_star,x_star)
 
         #Compute the mean (each row of K_star adds another element to the array)
-        #FIX THIS!!!
-        f_star_mean = K_star*self.K_c_inv*np.transpose(np.matrix(f_hat[0:self.n]))
+        index_shift = (class_number-1)*self.n
+        f_star_mean = np.dot( np.dot(K_star,self.K_c_inv) , f_hat[index_shift:index_shift+self.n] )
+
         #pi_hat_star_mean = self.pi(f_star_mean) #the sigmoid of the mean of the expectation (MAP prediction)
 
         return f_star_mean
@@ -396,8 +395,7 @@ class GPC(GP):
         term1 = np.linalg.inv( (K_inv+W) )
         term2 = np.dot(W,f) + y - pi
 
-        f_new = np.dot(term1,term2)
-        return f_new
+        return np.dot(term1,term2)
 
     def newton_method_multi(self,f_hat_guess,y,K_inv):
         dist = 10000

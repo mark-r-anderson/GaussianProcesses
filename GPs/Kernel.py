@@ -97,7 +97,7 @@ class Kernel(ABC):
         else:
             x_mn,x_nm = np.meshgrid(x1,x2)
     
-        return np.matrix( self.compute(x_mn,x_nm) )
+        return self.compute(x_mn,x_nm)
 
 ##################################################################################################
 #Subkernel classes BasicKernel and CombinedKernel which represent the two general types of kernels
