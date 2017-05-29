@@ -306,9 +306,10 @@ class GPCB(GeneralGPC):
 
         #Compute the mean (each row of K_star adds another element to the array)
         f_star_mean = np.dot( np.dot(K_star,self.K_inv) , f_hat )
-        pi_hat_star_mean = self.pi(f_star_mean) #the sigmoid of the mean of the expectation (MAP prediction)
-        
+
+        #Return the sigmoid of the mean of f_star if desired (MAP prediction).
         if map_prediction is True:
+            pi_hat_star_mean = self.pi(f_star_mean)
             return pi_hat_star_mean
 
         W = -np.diag(self.ddll2(f_hat))
@@ -360,31 +361,89 @@ class GPC(GeneralGPC):
         K_star_star = self.kernel.get_cov_mat(x_star,x_star)
 
         #Compute the mean (each row of K_star adds another element to the array)
-        index_shift = (class_number-1)*self.n
-        f_star_mean = np.dot( np.dot(K_star,self.K_inv) , f_hat[index_shift:index_shift+self.n] )
+        #index_shift = (class_number-1)*self.n
+        #f_star_mean = np.dot( np.dot(K_star,self.K_inv) , f_hat[index_shift:index_shift+self.n] )
 
-        #pi_hat_star_mean = self.pi(f_star_mean) #the sigmoid of the mean of the expectation (MAP prediction)
-
-        return f_star_mean
+        ####################################################################################################
         
-    def softmax(self,f):
+        #pi_hat_star_mean = self.pi(f_star_mean)
+        #pi_hat_star_mean = self.softmax(f_star_mean,class_number)
+        #return pi_hat_star_mean
+
+        #NEEDS TO BE FIXED!!!
+        #W = -np.diag(self.ddll2(f_hat))
+        
+        #K_prime = self.K + np.linalg.inv(W)
+        #K_prime_inv = np.linalg.inv(K_prime)
+        
+        #Compute the variance by taking the diagonal elements
+        #f_star_cov = K_star_star - np.dot( np.dot(K_star,K_prime_inv) , np.transpose(K_star) )
+        #f_star_var = np.diag(f_star_cov)
+
+        ###################################################################################################
+
+        #Calculate matrices for K_star and K_star_star for all classes (currently only 1 covariance matrix).
+        #Note that Q_star here is the transpose of Q_star in Rasmussen.
+        Q_star = K_star
+        K_star_star_all = K_star_star
+        for i in range(1,self.C,1):
+            Q_star = sp.linalg.block_diag(Q_star,K_star)
+            K_star_star_all = sp.linalg.block_diag(K_star_star_all,K_star_star)
+
+        #Calculate the softmax of the optimal f_hat.
+        pi_hat = self.softmax(f_hat)
+
+        #Calculate the matrix W for the optimal value of f_hat.
+        W = self.get_W(pi_hat)
+        W = self.numeric_fix(W)
+
+        #Calculate the matrix K_prime for the optimal value of f_hat.
+        K_prime = self.K_all + np.linalg.inv(W)
+        K_prime = self.numeric_fix(K_prime)
+        K_prime_inv = np.linalg.inv(K_prime)
+
+        #Calculate the mean for all classes.
+        f_star_mean_all = np.dot(Q_star,self.y-pi_hat)
+        
+        #Calculate the variance for all classes.
+        f_star_cov = K_star_star_all - np.dot( np.dot(Q_star,K_prime_inv) , np.transpose(Q_star) )
+
+        #print(f_star_cov.shape)
+        #print(f_star_mean)
+        #print(f_star_mean_all)
+        
+        if class_number is None:
+            return f_star_mean_all
+        else:
+            index_shift = (class_number-1)*self.n
+            return f_star_mean_all[index_shift:index_shift+self.n]
+        
+    def softmax(self,f,class_number=None):
+        '''
+        TODO:
+        -optimize
+        '''
         f_m = np.reshape(f,(self.C,self.n))
         pi = np.array([])
         
         for i in range(0,f.size,1):
-            index = (i)%(self.n)
-            f_i = f_m[:,index]
+            index = (i)%(self.n) #index for the ith training point
+            f_i = f_m[:,index] #the column corresponding to that training point (C classes long)
             
             num = np.exp(f[i])
             den = np.sum( np.exp(f_i) )
             
             pi = np.append(pi,num/den)
             
-        return pi
+        if class_number is None or class_number<1:
+            return pi
+        else:
+            index_shift = (class_number-1)*self.n
+            return pi[index_shift:index_shift+self.n]
 
     def Pi(self,pi):
         pi = np.reshape(pi,(self.C,self.n))
-        
+            
         Pi = np.diag(pi[0,:]) #initialize
         for i in range(1,pi.shape[0],1):
             Pi = np.vstack((Pi,np.diag(pi[i,:])))
@@ -394,13 +453,15 @@ class GPC(GeneralGPC):
         BigPi = self.Pi(pi)
         return np.dot(BigPi,np.transpose(BigPi))
 
+    def get_W(self,pi):
+        BigPiPiT = self.PiPiT(pi)
+        return np.diag(pi)-BigPiPiT
+        
     def f_new(self,f,y,K_inv):
         pi = self.softmax(f)
-        BigPiPiT = self.PiPiT(pi)
-        W = np.diag(pi)-BigPiPiT
+        W = self.get_W(pi)
         
         term1 = np.linalg.inv( (K_inv+W) )
         term2 = np.dot(W,f) + y - pi
 
         return np.dot(term1,term2)
-
