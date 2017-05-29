@@ -80,6 +80,40 @@ class GP(ABC):
         #Return the positive definite covariance matrix.
         return K
 
+    def get_samples(self,m,K,n=1):
+        '''
+        General method to sample from a distribution with mean m and covariance matrix K.
+        Also accepts the number of samples desired.
+        Returns n samples drawn from distribution of N~(m,K)
+        '''
+        #Ensure K is 2D and has same number of rows and columns.
+        if (K.ndim != 2) or (K.shape[0] != K.shape[1]):
+            errMsg = "The number of rows and columns of this matrix differ ({},{}).".format(K.shape[0],K.shape[1])
+            raise TypeError(errMsg)
+
+        #Check that the covariance matrix is positive definite and fix if it is not.
+        K = self.numeric_fix(K)
+        #print(self.positive_definite(K))
+        
+        #Compute the Cholesky decomposition.
+        #L = np.matrix( np.linalg.cholesky(K) )
+        L = np.linalg.cholesky(K)
+        
+        #Generate random samples with mean **0** and covariance of the identity matrix (i.e., independent).
+        v = np.random.normal(0,1,m.size)
+        v = v[:,np.newaxis]
+        
+        #Generate the desired number of samples.
+        for i in range(1,n,1):
+            tmp = np.random.normal(0,1,m.size)
+            tmp = tmp[:,np.newaxis]
+
+            v = np.append( v , tmp , axis=1 )
+    
+        #Return the sample(s) with distribution N~(m,K).
+        #return m + L*np.matrix(v)
+        return m + np.dot(L,v)
+        
 ############################
 #Gaussian process regression
 ############################
@@ -132,11 +166,12 @@ class GPR(GP):
         Based on the given kernel function. No training data.
         '''
         #Generate the mean for the prior distribution (assumed to be zero).
-        m = np.transpose( np.matrix( np.zeros(x_star.size) ) )
+        #m = np.transpose( np.matrix( np.zeros(x_star.size) ) )
+        m = np.zeros(x_star.size)[:,np.newaxis]
         
         #Generate the covariance matrix for prior distribution.
         K = self.kernel.get_cov_mat(x_star)
-
+        
         #Return n samples for distribution of N~(m,K)
         return self.get_samples(m,K,n)
     
@@ -149,8 +184,9 @@ class GPR(GP):
         m,K = self.predict(x_star)
         
         #Convert the mean to matrix format.
-        m = np.transpose( np.matrix(m) )
-
+        #m = np.transpose( np.matrix(m) )
+        m = m[:,np.newaxis]
+        
         #Return n samples for distribution of N~(m,K)
         return self.get_samples(m,K,n)
 
@@ -188,38 +224,6 @@ class GPR(GP):
 
         #Return the negative log marginal likelihood (scalar).
         return np.asscalar( np.matrix(self.y)*K_inv*np.transpose(np.matrix(self.y)) + np.linalg.det(K) )
-    
-    def get_samples(self,m,K,n=1):
-        '''
-        General method to sample from a distribution with mean m and covariance matrix K.
-        Also accepts the number of samples desired.
-        Returns n samples drawn from distribution of N~(m,K)
-        '''
-        #Ensure K is 2D and has same number of rows and columns.
-        if (K.ndim != 2) or (K.shape[0] != K.shape[1]):
-            errMsg = "The number of rows and columns of this matrix differ ({},{}).".format(K.shape[0],K.shape[1])
-            raise TypeError(errMsg)
-
-        #Check that the covariance matrix is positive definite and fix if it is not.
-        K = self.numeric_fix(K)
-        #print(self.positive_definite(K))
-        
-        #Compute the Cholesky decomposition.
-        L = np.matrix( np.linalg.cholesky(K) )
-        
-        #Generate random samples with mean **0** and covariance of the identity matrix (i.e., independent).
-        v = np.random.normal(0,1,m.size)
-        v = v[:,np.newaxis]
-        
-        #Generate the desired number of samples.
-        for i in range(1,n,1):
-            tmp = np.random.normal(0,1,m.size)
-            tmp = tmp[:,np.newaxis]
-
-            v = np.append( v , tmp , axis=1 )
-    
-        #Return the sample(s) with distribution N~(m,K).
-        return m + L*np.matrix(v)
 
 #################################
 #Gaussian process classification
@@ -393,15 +397,26 @@ class GPC(GeneralGPC):
         f_star_cov = K_star_star_all - np.dot( np.dot(Q_star,K_prime_inv) , np.transpose(Q_star) )
         f_star_var = np.diag(f_star_cov)
 
-        #print(f_star_cov.shape)
-        #print(f_star_mean)
-        #print(f_star_mean_all)
-        
+        #Estimate pi_star_mean by drawing samples from Gaussian distribution N~(f_star_mean,f_star_cov).
+        n_samples = 100
+        samples = self.get_samples(f_star_mean_all[:,np.newaxis],f_star_cov,n_samples)
+
+        #Initialize pi_star_mean with the softmax of the first sample.
+        pi_star_mean = self.softmax(samples[:,0])
+
+        #For each column in samples, softmax and then at the end, average it up.
+        for i in range(1,n_samples,1):
+            pi_star_mean += self.softmax(samples[:,i])
+        pi_star_mean /= n_samples
+
+        #If desired, can return the estimate of pi_star for only a given class.
         if class_number is None:
-            return f_star_mean_all
+            #return f_star_mean_all
+            return pi_star_mean
         else:
             index_shift = (class_number-1)*self.n
-            return f_star_mean_all[index_shift:index_shift+self.n]
+            #return f_star_mean_all[index_shift:index_shift+self.n]
+            return pi_star_mean[index_shift:index_shift+self.n]
         
     def softmax(self,f,class_number=None):
         '''
