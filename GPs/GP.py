@@ -1,12 +1,13 @@
 import numpy as np
 import scipy as sp
 from scipy.optimize import minimize
+from abc import ABC, abstractmethod
 
 ###################
 #Gaussian processes
 ###################
 
-class GP:
+class GP(ABC):
     '''
     General class to hold parameters common to both GPR and GPC.
     '''
@@ -224,24 +225,74 @@ class GPR(GP):
 #Gaussian process classification
 #################################
 
-class GPCB(GP):
+class GeneralGPC(GP):
     '''
-    General class for performing Gaussian process classification (binary case).
+    General class for performing Gaussian process classification. The binary and multiclass case inherit.
     '''
     def __init__(self,kernel):
         GP.__init__(self,kernel)
 
-    def train(self,x,y):
+        self.C = -1
+        self.n = -1
+        self.x_all = np.array([])
+        self.K_all = np.array([])
+        self.K_all_inv = np.array([])
+
+    def train(self,x,y,C=1):
         '''
         Compute and invert the training covariance matrix and store the training data.
         '''
-        #Store x and y
-        self.x = x
+        self.n = int(y.size/C)
+        self.C = C
+        
+        #Store x and y, and also x_c (since x is just a repeat of x_c n times)
+        self.x = x[0:self.n]
+        self.x_all = x
         self.y = y
 
         #Compute the covariance matrix between the test data and itself
         self.set_K()
 
+        #Compute the covariance matrix between the test data and itself for all classes.
+        if C>1:
+            self.K_all = self.K
+            for i in range(1,C,1):
+                print(self.K_all.shape)
+                self.K_all = sp.linalg.block_diag(self.K_all,self.K)
+            self.K_all_inv = np.linalg.inv(self.K_all)
+
+    @abstractmethod
+    def f_new(self):
+        '''
+        This must be implemented in child classes since newton_method depends on it.
+        '''
+        pass
+            
+    def newton_method(self,f_hat_guess,y,K_inv,tol=1e-5):
+        '''
+        Iterate to find f_new and obtain the optimal value f_hat.
+        '''
+        dist = 10*tol
+        f_hat = f_hat_guess
+        while(dist>tol):
+            f_hat_new = self.f_new(f_hat,y,K_inv)
+            dist = np.linalg.norm(f_hat_new - f_hat)
+            f_hat = f_hat_new 
+        return f_hat
+
+class GPCB(GeneralGPC):
+    '''
+    General class for performing Gaussian process classification (binary case).
+    '''
+    def __init__(self,kernel):
+        GeneralGPC.__init__(self,kernel)
+
+    def train(self,x,y):
+        '''
+        If using binary classifier, make it so that there is no option for user to enter the number of classes.
+        '''
+        GeneralGPC.train(self,x,y)
+        
     def predict(self,x_star,map_prediction=True):
         #Obtain optimal value of f_hat
         f_hat = np.zeros(self.y.size)
@@ -253,11 +304,6 @@ class GPCB(GP):
         #Compute the covariance matrix between the training data and itself.
         K_star_star = self.kernel.get_cov_mat(x_star,x_star)
 
-        #f_hat_tmp = np.reshape( np.array(f_hat),f_hat.size )
-        W = -np.diag(self.ddll2(f_hat))
-        K_prime = self.K + np.linalg.inv(W)
-        K_prime_inv = np.linalg.inv(K_prime)
-
         #Compute the mean (each row of K_star adds another element to the array)
         f_star_mean = np.dot( np.dot(K_star,self.K_inv) , f_hat )
         pi_hat_star_mean = self.pi(f_star_mean) #the sigmoid of the mean of the expectation (MAP prediction)
@@ -265,6 +311,10 @@ class GPCB(GP):
         if map_prediction is True:
             return pi_hat_star_mean
 
+        W = -np.diag(self.ddll2(f_hat))
+        K_prime = self.K + np.linalg.inv(W)
+        K_prime_inv = np.linalg.inv(K_prime)
+        
         #Compute the variance by taking the diagonal elements
         f_star_cov = K_star_star - np.dot( np.dot(K_star,K_prime_inv) , np.transpose(K_star) )
         f_star_var = np.diag(f_star_cov)
@@ -290,70 +340,28 @@ class GPCB(GP):
         term1 = np.linalg.inv( (K_inv+W) )
         term2 = np.matmul(W,f) + self.dll2(f,y)
         return np.dot(term1,term2)
-        
-    def newton_method(self,f_hat_guess,y,K_inv):
-        dist = 10000
-        f_hat = f_hat_guess
-        while(dist>0.001):
-            f_hat_new = self.f_new(f_hat,y,K_inv)
-            dist = np.linalg.norm(f_hat_new - f_hat)
-            f_hat = f_hat_new
-            
-        return f_hat
 
-class GPC(GP):
+class GPC(GeneralGPC):
     '''
     General class for performing Gaussian process classification (binary case).
     '''
     def __init__(self,kernel):
-        GP.__init__(self,kernel)
-
-        self.C = -1
-        self.n = -1
-
-        self.x_c = np.array([])
-        self.K_c = np.array([])
-        self.K_c_inv = np.array([])
-
-    def train(self,x,y,C):
-        '''
-        Compute and invert the training covariance matrix and store the training data.
-        '''
-        self.n = int(y.size/C)
-        self.C = C
-        
-        #Store x and y, and also x_c (since x is just a repeat of x_c n times)
-        self.x = x
-        self.x_c = x[0:self.n]
-        self.y = y
-
-        #Compute the covariance matrix between the test data and itself for one class.
-        K_c,K_c_inv = self.compute_K(self.x_c,self.x_c)
-        self.K_c = K_c
-        self.K_c_inv = K_c_inv
-
-        #Compute the covariance matrix between the test data and itself for all classes.
-        K = K_c
-        for i in range(1,C,1):
-            K = sp.linalg.block_diag(K,K_c)
-        K_inv = np.linalg.inv(K)
-        self.K = K
-        self.K_inv = K_inv
+        GeneralGPC.__init__(self,kernel)
 
     def predict(self,x_star,class_number=1):
         #Obtain optimal value of f_hat
         f_hat = np.zeros(self.y.size)
-        f_hat = self.newton_method_multi(f_hat,self.y,self.K_inv)
+        f_hat = self.newton_method(f_hat,self.y,self.K_all_inv)
         
         #Compute the covariance matrix between the test data and the training data.
-        K_star = self.kernel.get_cov_mat(self.x_c,x_star)
+        K_star = self.kernel.get_cov_mat(self.x,x_star)
 
         #Compute the covariance matrix between the training data and itself.
         K_star_star = self.kernel.get_cov_mat(x_star,x_star)
 
         #Compute the mean (each row of K_star adds another element to the array)
         index_shift = (class_number-1)*self.n
-        f_star_mean = np.dot( np.dot(K_star,self.K_c_inv) , f_hat[index_shift:index_shift+self.n] )
+        f_star_mean = np.dot( np.dot(K_star,self.K_inv) , f_hat[index_shift:index_shift+self.n] )
 
         #pi_hat_star_mean = self.pi(f_star_mean) #the sigmoid of the mean of the expectation (MAP prediction)
 
@@ -380,14 +388,13 @@ class GPC(GP):
         Pi = np.diag(pi[0,:]) #initialize
         for i in range(1,pi.shape[0],1):
             Pi = np.vstack((Pi,np.diag(pi[i,:])))
-            
         return Pi
 
     def PiPiT(self,pi):
         BigPi = self.Pi(pi)
         return np.dot(BigPi,np.transpose(BigPi))
 
-    def f_new_multi(self,f,y,K_inv):
+    def f_new(self,f,y,K_inv):
         pi = self.softmax(f)
         BigPiPiT = self.PiPiT(pi)
         W = np.diag(pi)-BigPiPiT
@@ -397,12 +404,3 @@ class GPC(GP):
 
         return np.dot(term1,term2)
 
-    def newton_method_multi(self,f_hat_guess,y,K_inv):
-        dist = 10000
-        f_hat = f_hat_guess
-        while(dist>0.001):
-            f_hat_new = self.f_new_multi(f_hat,y,K_inv)
-            dist = np.linalg.norm(f_hat_new - f_hat)
-            f_hat = f_hat_new
-            
-        return f_hat
