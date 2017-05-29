@@ -360,27 +360,11 @@ class GPC(GeneralGPC):
         #Compute the covariance matrix between the training data and itself.
         K_star_star = self.kernel.get_cov_mat(x_star,x_star)
 
+        ##########################################################################################
         #Compute the mean (each row of K_star adds another element to the array)
         #index_shift = (class_number-1)*self.n
         #f_star_mean = np.dot( np.dot(K_star,self.K_inv) , f_hat[index_shift:index_shift+self.n] )
-
-        ####################################################################################################
-        
-        #pi_hat_star_mean = self.pi(f_star_mean)
-        #pi_hat_star_mean = self.softmax(f_star_mean,class_number)
-        #return pi_hat_star_mean
-
-        #NEEDS TO BE FIXED!!!
-        #W = -np.diag(self.ddll2(f_hat))
-        
-        #K_prime = self.K + np.linalg.inv(W)
-        #K_prime_inv = np.linalg.inv(K_prime)
-        
-        #Compute the variance by taking the diagonal elements
-        #f_star_cov = K_star_star - np.dot( np.dot(K_star,K_prime_inv) , np.transpose(K_star) )
-        #f_star_var = np.diag(f_star_cov)
-
-        ###################################################################################################
+        ##########################################################################################
 
         #Calculate matrices for K_star and K_star_star for all classes (currently only 1 covariance matrix).
         #Note that Q_star here is the transpose of Q_star in Rasmussen.
@@ -405,8 +389,9 @@ class GPC(GeneralGPC):
         #Calculate the mean for all classes.
         f_star_mean_all = np.dot(Q_star,self.y-pi_hat)
         
-        #Calculate the variance for all classes.
+        #Calculate the covariance and variance for all classes.
         f_star_cov = K_star_star_all - np.dot( np.dot(Q_star,K_prime_inv) , np.transpose(Q_star) )
+        f_star_var = np.diag(f_star_cov)
 
         #print(f_star_cov.shape)
         #print(f_star_mean)
