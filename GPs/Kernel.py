@@ -88,16 +88,55 @@ class Kernel(ABC):
         Return kernel result as a numpy matrix.
         Dimension of 1st argument is the number of columns
         Dimension of 2nd argument is the number of rows
-        
-        TODO:
-        -optimize
         '''        
-        if x2 is None:
-            x_mn,x_nm = np.meshgrid(x1,x1)
+
+        #if x2 is None:
+        #    x_mn,x_nm = np.meshgrid(x1,x1)
+        #else:
+        #    x_mn,x_nm = np.meshgrid(x1,x2)
+
+        #return self.compute(x_mn,x_nm)
+        #will need to change from size to shape
+
+        #cols = x1.size
+        #rows = cols
+        #if x2 is None:
+        #    cov_mat = np.zeros((rows,cols))
+        #else:
+        #    rows = x2.size
+        #    cov_mat = np.zeros((rows,cols))
+        #    
+        #for i in range(0,rows,1):
+        #    for j in range(0,cols,1):
+        #        cov_mat[i,j]=self.compute(x2[i],x1[j])
+        #
+        #return cov_mat
+
+        cols = x1.size
+        rows = cols
+        if x2 is not None:
+            rows = x2.size
+            cov_mat = np.zeros((rows,cols))
+            for i in range(0,rows,1):
+                for j in range(0,cols,1):
+                    cov_mat[i,j]=self.compute(x2[i],x1[j])
         else:
-            x_mn,x_nm = np.meshgrid(x1,x2)
-    
-        return self.compute(x_mn,x_nm)
+            #print('The optimal version has been selected.')
+            cov_mat = np.zeros((rows,cols))
+            for i in range(0,rows,1):
+                for j in range(0,i+1,1):
+                    #print(i,j)
+                    if i==j and i>0:
+                        cov_mat[i,j] = cov_mat[0,0]
+                    #if i!=j or i==0:
+                    else:
+                        cov_mat[i,j] = self.compute(x1[i],x1[j])
+                        cov_mat[j,i] = cov_mat[i,j]
+
+        #print(cov_mat)
+        #print('---------')
+                        
+        return cov_mat
 
 ##################################################################################################
 #Subkernel classes BasicKernel and CombinedKernel which represent the two general types of kernels
@@ -216,7 +255,7 @@ class SqExp(BasicKernel):
         '''
         Return squared exponential result as a numpy array.
         '''
-        return self.hparams2['variance']**2 * np.exp( -(x1-x2)**2 / (2*self.hparams2['lengthscale']**2) )
+        return self.hparams2['variance']**2 * np.exp( -np.linalg.norm(x1-x2)**2 / (2*self.hparams2['lengthscale']**2) )
         
 class RQ(BasicKernel):
     '''
@@ -234,7 +273,7 @@ class RQ(BasicKernel):
         '''
         Return rational quadratic result as a numpy array.
         '''
-        return self.hparams2['variance']**2 * ( 1 + (x1-x2)**2 / (2*self.hparams2['alpha']*self.hparams2['lengthscale']**2) )**(-self.hparams2['alpha'])
+        return self.hparams2['variance']**2 * ( 1 + np.linalg.norm(x1-x2)**2 / (2*self.hparams2['alpha']*self.hparams2['lengthscale']**2) )**(-self.hparams2['alpha'])
     
 class ExpSine(BasicKernel):
     '''
@@ -252,7 +291,7 @@ class ExpSine(BasicKernel):
         '''
         Return exponential sine (periodic) result as a numpy array.
         '''
-        return self.hparams2['variance']**2 * np.exp( - 2*np.sin(np.pi*abs(x1-x2)/self.hparams2['period'])**2 / (self.hparams2['lengthscale']**2) )
+        return self.hparams2['variance']**2 * np.exp( - 2*np.sin(np.pi*np.linalg.norm(x1-x2)/self.hparams2['period'])**2 / (self.hparams2['lengthscale']**2) )
 
 class WhiteNoise(BasicKernel):
     '''
@@ -269,7 +308,14 @@ class WhiteNoise(BasicKernel):
         This method is not great. It assumes that the matrix will be all zeros for K_star.
         As well, if the training and test set happen to be the same shape, this will fail completely.
         '''
-        if x1.shape[0] == x1.shape[1]:
-            return self.hparams2['noise'] * np.identity(int(np.sqrt(x1.size)))
+
+        #if x1.shape[0] == x1.shape[1]:
+        #    return self.hparams2['noise'] * np.identity(int(np.sqrt(x1.size)))
+        #else:
+        #    return np.zeros(x1.shape)
+
+        tol = 1e-9
+        if np.linalg.norm(x1-x2)<tol:
+            return self.hparams2['noise']
         else:
-            return np.zeros(x1.shape)
+            return 0

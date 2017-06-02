@@ -18,12 +18,16 @@ class GP(ABC):
         self.x = np.array([])
         self.y = np.array([])
 
-    def compute_K(self,x1,x2):
+    def compute_K(self,x1,x2=None):
         '''
         Recompute K, K_inv and return the result.
         '''
         #Compute the covariance matrix and check that it is positive definite.
-        K = self.kernel.get_cov_mat(x1,x2)
+        if x2 is None:
+            K = self.kernel.get_cov_mat(x1)
+        else:
+            K = self.kernel.get_cov_mat(x1,x2)
+            
         K = self.numeric_fix(K)
         
         #Compute the inverse of the covariance matrix.
@@ -35,7 +39,7 @@ class GP(ABC):
         '''
         Recompute K, K_inv and set the attributes to the result.
         '''
-        self.K, self.K_inv = self.compute_K(self.x,self.x)
+        self.K, self.K_inv = self.compute_K(self.x)
 
     def positive_definite(self,K):
         '''
@@ -80,6 +84,24 @@ class GP(ABC):
         #Return the positive definite covariance matrix.
         return K
 
+    def optimize(self,method='SLSQP'):
+        '''
+        Optimize over the hyperparameters.
+        '''
+        #Set the initial hyperparameters to the ones entered by the user.
+        hparams0 = np.array( self.kernel.get_hyperparameters() )
+        hparams_bounds = self.kernel.get_hyperparameters_bounds()
+        #print(hparams0)
+        
+        #Minimize the negative log marginal likelihood based on these initial parameters.
+        res = minimize(self.lml,hparams0,method=method, bounds=hparams_bounds ,tol=1e-6)
+
+        #Update the covariance matrices for the training data (test matrices updated in predict method).
+        self.set_K()
+
+        #If desired, can return the resulting object from SciPy optimize.
+        return res
+
     def get_samples(self,m,K,n=1):
         '''
         General method to sample from a distribution with mean m and covariance matrix K.
@@ -96,7 +118,6 @@ class GP(ABC):
         #print(self.positive_definite(K))
         
         #Compute the Cholesky decomposition.
-        #L = np.matrix( np.linalg.cholesky(K) )
         L = np.linalg.cholesky(K)
         
         #Generate random samples with mean **0** and covariance of the identity matrix (i.e., independent).
@@ -111,7 +132,6 @@ class GP(ABC):
             v = np.append( v , tmp , axis=1 )
     
         #Return the sample(s) with distribution N~(m,K).
-        #return m + L*np.matrix(v)
         return m + np.dot(L,v)
         
 ############################
@@ -144,7 +164,7 @@ class GPR(GP):
         K_star = self.kernel.get_cov_mat(self.x,x_star)
 
         #Compute the covariance matrix between the training data and itself.
-        K_star_star = self.kernel.get_cov_mat(x_star,x_star)
+        K_star_star = self.kernel.get_cov_mat(x_star)
         
         #Compute the mean (each row of K_star adds another element to the array)
         y_star_mean = np.dot( np.dot(K_star,self.K_inv) , self.y )
@@ -190,24 +210,6 @@ class GPR(GP):
         #Return n samples for distribution of N~(m,K)
         return self.get_samples(m,K,n)
 
-    def optimize(self,method='SLSQP'):
-        '''
-        Optimize over the hyperparameters.
-        '''
-        #Set the initial hyperparameters to the ones entered by the user.
-        hparams0 = np.array( self.kernel.get_hyperparameters() )
-        hparams_bounds = self.kernel.get_hyperparameters_bounds()
-        #print(hparams0)
-        
-        #Minimize the negative log marginal likelihood based on these initial parameters.
-        res = minimize(self.lml,hparams0,method=method, bounds=hparams_bounds ,tol=1e-6)
-
-        #Update the covariance matrices for the training data (test matrices updated in predict method).
-        self.set_K()
-
-        #If desired, can return the resulting object from SciPy optimize.
-        return res
-
     def lml(self,hparams=None):
         '''
         Negative log marginal likelihood.
@@ -220,7 +222,7 @@ class GPR(GP):
         #print(hparams)
         
         #Covariance matrix must be recomputed and inverted every time!
-        K,K_inv = self.compute_K(self.x,self.x)
+        K,K_inv = self.compute_K(self.x)
 
         #Return the negative log marginal likelihood (scalar).
         return np.asscalar( np.matrix(self.y)*K_inv*np.transpose(np.matrix(self.y)) + np.linalg.det(K) )
@@ -242,6 +244,21 @@ class GeneralGPC(GP):
         self.K_all = np.array([])
         self.K_all_inv = np.array([])
 
+    def compute_K_all(self,K):
+        if self.C>1:
+            K_all = K
+            for i in range(1,self.C,1):
+                K_all = sp.linalg.block_diag(K_all,K)
+            K_all = self.numeric_fix(K_all)
+            K_all_inv = np.linalg.inv(K_all)
+
+            return K_all,K_all_inv
+        else:
+            return np.array([]),np.array([])    
+
+    def set_K_all(self):
+        self.K_all,self.K_all_inv = self.compute_K_all(self.K)
+        
     def train(self,x,y,C=1):
         '''
         Compute and invert the training covariance matrix and store the training data.
@@ -258,12 +275,7 @@ class GeneralGPC(GP):
         self.set_K()
 
         #Compute the covariance matrix between the test data and itself for all classes.
-        if C>1:
-            self.K_all = self.K
-            for i in range(1,C,1):
-                print(self.K_all.shape)
-                self.K_all = sp.linalg.block_diag(self.K_all,self.K)
-            self.K_all_inv = np.linalg.inv(self.K_all)
+        self.set_K_all()
 
     @abstractmethod
     def f_new(self):
@@ -306,7 +318,7 @@ class GPCB(GeneralGPC):
         K_star = self.kernel.get_cov_mat(self.x,x_star)
 
         #Compute the covariance matrix between the training data and itself.
-        K_star_star = self.kernel.get_cov_mat(x_star,x_star)
+        K_star_star = self.kernel.get_cov_mat(x_star)
 
         #Compute the mean (each row of K_star adds another element to the array)
         f_star_mean = np.dot( np.dot(K_star,self.K_inv) , f_hat )
@@ -362,7 +374,7 @@ class GPC(GeneralGPC):
         K_star = self.kernel.get_cov_mat(self.x,x_star)
 
         #Compute the covariance matrix between the training data and itself.
-        K_star_star = self.kernel.get_cov_mat(x_star,x_star)
+        K_star_star = self.kernel.get_cov_mat(x_star)
 
         ##########################################################################################
         #Compute the mean (each row of K_star adds another element to the array)
@@ -382,7 +394,7 @@ class GPC(GeneralGPC):
         pi_hat = self.softmax(f_hat)
 
         #Calculate the matrix W for the optimal value of f_hat.
-        W = self.get_W(pi_hat)
+        W = self.compute_W(pi_hat)
         W = self.numeric_fix(W)
 
         #Calculate the matrix K_prime for the optimal value of f_hat.
@@ -453,15 +465,75 @@ class GPC(GeneralGPC):
         BigPi = self.Pi(pi)
         return np.dot(BigPi,np.transpose(BigPi))
 
-    def get_W(self,pi):
+    def compute_W(self,pi):
         BigPiPiT = self.PiPiT(pi)
         return np.diag(pi)-BigPiPiT
         
     def f_new(self,f,y,K_inv):
         pi = self.softmax(f)
-        W = self.get_W(pi)
+        W = self.compute_W(pi)
         
         term1 = np.linalg.inv( (K_inv+W) )
         term2 = np.dot(W,f) + y - pi
 
         return np.dot(term1,term2)
+
+    def lml(self,hparams=None):
+        '''
+        Negative log marginal likelihood.
+        '''
+        #Check to see if an array of hyperparameters is passed.
+        if hparams is not None:
+            #Reassign hyperparameters if an array of hyperparameters is passed.
+            self.kernel.set_hyperparameters(hparams)
+            
+        #print(hparams)
+        
+        #Covariance matrix must be recomputed and inverted every time!
+        K,K_inv = self.compute_K(self.x,self.x)
+        K_all,K_all_inv = self.compute_K_all(K)
+
+        f_hat = np.zeros(self.y.size)
+        f_hat = self.newton_method(f_hat,self.y,self.K_all_inv)
+
+        pi_hat = self.softmax(f_hat)
+
+        W = self.compute_W(pi_hat)
+
+        #Calculate the log marginal likelihood.
+        term1 = -0.5*np.dot( np.dot(f_hat,K_all_inv),f_hat ) + np.dot(self.y,f_hat)
+
+        term2 = 0
+        f_hat_m = np.reshape(f_hat,(self.C,self.n))
+        for i in range(0,self.n,1):
+            f_i = f_hat_m[:,i]
+            term2 += -np.log( np.sum( np.exp(f_i) ) )
+
+        #W_sqrt = np.sqrt(W)
+        #B = np.dot( np.dot(W_sqrt,K_all),W_sqrt)
+
+        #print(W)
+        #print(W_sqrt)
+        #print(np.dot(W_sqrt,K_all))
+        #print(np.diag(W))
+
+
+        
+
+            
+        #term3 = -0.5*np.log(np.linalg.det(K_all)*np.linalg.det(K_all_inv+W))
+
+        
+        #print(K_all)
+        #print(K_all_inv)
+        #print(K_inv)
+        #print(term1)
+        #print(term2)
+        #print(K_all_inv+W)
+        #print(np.linalg.det(K_all))
+        #print(np.linalg.det(K_all_inv+W))
+        
+        #Return the negative log marginal likelihood (scalar).
+        #return np.asscalar( np.matrix(self.y)*K_inv*np.transpose(np.matrix(self.y)) + np.linalg.det(K) )
+
+        return term1 + term2
