@@ -112,10 +112,12 @@ class Kernel(ABC):
         #
         #return cov_mat
 
-        cols = x1.size
+        #cols = x1.size
+        cols = len(x1)
         rows = cols
         if x2 is not None:
-            rows = x2.size
+            #rows = x2.size
+            rows = len(x2)
             cov_mat = np.zeros((rows,cols))
             for i in range(0,rows,1):
                 for j in range(0,cols,1):

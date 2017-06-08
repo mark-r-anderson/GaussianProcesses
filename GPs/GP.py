@@ -41,6 +41,9 @@ class GP(ABC):
         '''
         self.K, self.K_inv = self.compute_K(self.x)
 
+    def set_K_all(self):
+        pass
+        
     def positive_definite(self,K):
         '''
         Check whether a matrix is positive definite.
@@ -98,7 +101,8 @@ class GP(ABC):
 
         #Update the covariance matrices for the training data (test matrices updated in predict method).
         self.set_K()
-
+        self.set_K_all()
+        
         #If desired, can return the resulting object from SciPy optimize.
         return res
 
@@ -365,7 +369,9 @@ class GPC(GeneralGPC):
     def __init__(self,kernel):
         GeneralGPC.__init__(self,kernel)
 
-    def predict(self,x_star,class_number=1):
+    def predict(self,x_star,class_number=None):
+        n_star = len(x_star)
+
         #Obtain optimal value of f_hat
         f_hat = np.zeros(self.y.size)
         f_hat = self.newton_method(f_hat,self.y,self.K_all_inv)
@@ -413,12 +419,14 @@ class GPC(GeneralGPC):
         n_samples = 100
         samples = self.get_samples(f_star_mean_all[:,np.newaxis],f_star_cov,n_samples)
 
+        #print('---')
+        
         #Initialize pi_star_mean with the softmax of the first sample.
-        pi_star_mean = self.softmax(samples[:,0])
+        pi_star_mean = self.softmax(samples[:,0],n_points=n_star)
 
         #For each column in samples, softmax and then at the end, average it up.
         for i in range(1,n_samples,1):
-            pi_star_mean += self.softmax(samples[:,i])
+            pi_star_mean += self.softmax(samples[:,i],n_points=n_star)
         pi_star_mean /= n_samples
 
         #If desired, can return the estimate of pi_star for only a given class.
@@ -426,20 +434,47 @@ class GPC(GeneralGPC):
             #return f_star_mean_all
             return pi_star_mean
         else:
-            index_shift = (class_number-1)*self.n
+            index_shift = (class_number-1)*n_star
             #return f_star_mean_all[index_shift:index_shift+self.n]
-            return pi_star_mean[index_shift:index_shift+self.n]
+            return pi_star_mean[index_shift:index_shift+n_star]
         
-    def softmax(self,f,class_number=None):
+    def evaluate(self,pi_star_mean,test_data):
+        #test_results = [(np.argmax(self.feedforward(x)), y) for (x, y) in test_data]
+        #return sum(int(x == y) for (x, y) in test_results)
+        n_test = len(test_data)
+
+        pi_star_mean = np.reshape(pi_star_mean,(self.C,n_test))
+
+        #test_results = [(np.argmax(x,y) for x, y in pi_star_mean]
+
+        test_results = []
+        for i in range(0,n_test,1):
+            res = pi_star_mean[:,i]
+            test_results.append( (np.argmax(res), test_data[i][1]) )
+
+        #test_results = [(np.argmax(self.feedforward(x)), y) for (x, y) in test_data]
+
+        n_correct = sum(int(x == y) for (x, y) in test_results)
+
+        print("{0}/{1}".format(n_correct,len(test_data)))
+    
+    def softmax(self,f,class_number=None,n_points=None):
         '''
         TODO:
         -optimize
         '''
-        f_m = np.reshape(f,(self.C,self.n))
+        if n_points is None:
+            n = self.n
+        else:
+            n = n_points
+
+        #print(n)
+            
+        f_m = np.reshape(f,(self.C,n))
         pi = np.array([])
         
         for i in range(0,f.size,1):
-            index = (i)%(self.n) #index for the ith training point
+            index = (i)%(n) #index for the ith training point
             f_i = f_m[:,index] #the column corresponding to that training point (C classes long)
             
             num = np.exp(f[i])
@@ -450,8 +485,8 @@ class GPC(GeneralGPC):
         if class_number is None or class_number<1:
             return pi
         else:
-            index_shift = (class_number-1)*self.n
-            return pi[index_shift:index_shift+self.n]
+            index_shift = (class_number-1)*n
+            return pi[index_shift:index_shift+n]
 
     def Pi(self,pi):
         pi = np.reshape(pi,(self.C,self.n))
@@ -499,7 +534,8 @@ class GPC(GeneralGPC):
         pi_hat = self.softmax(f_hat)
 
         W = self.compute_W(pi_hat)
-
+        W = self.numeric_fix(W)
+        
         #Calculate the log marginal likelihood.
         term1 = -0.5*np.dot( np.dot(f_hat,K_all_inv),f_hat ) + np.dot(self.y,f_hat)
 
@@ -518,10 +554,20 @@ class GPC(GeneralGPC):
         #print(np.diag(W))
 
 
-        
-
-            
         #term3 = -0.5*np.log(np.linalg.det(K_all)*np.linalg.det(K_all_inv+W))
+
+        #np.eye(self.C,self.n)+
+
+        tmpterm1 = np.dot(sp.linalg.sqrtm(W),K_all)
+        tmpterm2 = np.dot( tmpterm1 , sp.linalg.sqrtm(W) )
+
+        #print(K_all.shape)
+        #print(W.shape)
+        #print(sp.linalg.sqrtm(W).shape)
+        
+        term3 = -0.5*np.log(np.linalg.det(np.eye(self.C*self.n)+tmpterm2))
+
+        #print(term3)
 
         
         #print(K_all)
@@ -536,4 +582,4 @@ class GPC(GeneralGPC):
         #Return the negative log marginal likelihood (scalar).
         #return np.asscalar( np.matrix(self.y)*K_inv*np.transpose(np.matrix(self.y)) + np.linalg.det(K) )
 
-        return term1 + term2
+        return -(term1 + term2 + term3)
