@@ -90,3 +90,5 @@ ENV/
 
 Tests
 test-*.ipynb
+mnist_loader.py
+neural-networks-and-deep-learning/

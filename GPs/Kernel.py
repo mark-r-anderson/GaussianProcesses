@@ -90,53 +90,32 @@ class Kernel(ABC):
         Dimension of 2nd argument is the number of rows
         '''        
 
-        #if x2 is None:
-        #    x_mn,x_nm = np.meshgrid(x1,x1)
-        #else:
-        #    x_mn,x_nm = np.meshgrid(x1,x2)
-
-        #return self.compute(x_mn,x_nm)
-        #will need to change from size to shape
-
-        #cols = x1.size
-        #rows = cols
-        #if x2 is None:
-        #    cov_mat = np.zeros((rows,cols))
-        #else:
-        #    rows = x2.size
-        #    cov_mat = np.zeros((rows,cols))
-        #    
-        #for i in range(0,rows,1):
-        #    for j in range(0,cols,1):
-        #        cov_mat[i,j]=self.compute(x2[i],x1[j])
-        #
-        #return cov_mat
-
-        #cols = x1.size
+        '''
+        if x2 is None:
+            x_mn,x_nm = np.meshgrid(x1,x1)
+        else:
+            x_mn,x_nm = np.meshgrid(x1,x2)
+            
+        return self.compute(x_mn,x_nm)
+        '''
+        
         cols = len(x1)
         rows = cols
         if x2 is not None:
-            #rows = x2.size
             rows = len(x2)
             cov_mat = np.zeros((rows,cols))
             for i in range(0,rows,1):
                 for j in range(0,cols,1):
                     cov_mat[i,j]=self.compute(x2[i],x1[j])
         else:
-            #print('The optimal version has been selected.')
             cov_mat = np.zeros((rows,cols))
             for i in range(0,rows,1):
                 for j in range(0,i+1,1):
-                    #print(i,j)
                     if i==j and i>0:
                         cov_mat[i,j] = cov_mat[0,0]
-                    #if i!=j or i==0:
                     else:
                         cov_mat[i,j] = self.compute(x1[i],x1[j])
                         cov_mat[j,i] = cov_mat[i,j]
-
-        #print(cov_mat)
-        #print('---------')
                         
         return cov_mat
 

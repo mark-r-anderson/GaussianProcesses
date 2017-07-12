@@ -223,8 +223,6 @@ class GPR(GP):
             #Reassign hyperparameters if an array of hyperparameters is passed.
             self.kernel.set_hyperparameters(hparams)
             
-        #print(hparams)
-        
         #Covariance matrix must be recomputed and inverted every time!
         K,K_inv = self.compute_K(self.x)
 
@@ -382,12 +380,6 @@ class GPC(GeneralGPC):
         #Compute the covariance matrix between the training data and itself.
         K_star_star = self.kernel.get_cov_mat(x_star)
 
-        ##########################################################################################
-        #Compute the mean (each row of K_star adds another element to the array)
-        #index_shift = (class_number-1)*self.n
-        #f_star_mean = np.dot( np.dot(K_star,self.K_inv) , f_hat[index_shift:index_shift+self.n] )
-        ##########################################################################################
-
         #Calculate matrices for K_star and K_star_star for all classes (currently only 1 covariance matrix).
         #Note that Q_star here is the transpose of Q_star in Rasmussen.
         Q_star = K_star
@@ -418,8 +410,6 @@ class GPC(GeneralGPC):
         #Estimate pi_star_mean by drawing samples from Gaussian distribution N~(f_star_mean,f_star_cov).
         n_samples = 100
         samples = self.get_samples(f_star_mean_all[:,np.newaxis],f_star_cov,n_samples)
-
-        #print('---')
         
         #Initialize pi_star_mean with the softmax of the first sample.
         pi_star_mean = self.softmax(samples[:,0],n_points=n_star)
@@ -431,28 +421,20 @@ class GPC(GeneralGPC):
 
         #If desired, can return the estimate of pi_star for only a given class.
         if class_number is None:
-            #return f_star_mean_all
             return pi_star_mean
         else:
             index_shift = (class_number-1)*n_star
-            #return f_star_mean_all[index_shift:index_shift+self.n]
             return pi_star_mean[index_shift:index_shift+n_star]
         
     def evaluate(self,pi_star_mean,test_data):
-        #test_results = [(np.argmax(self.feedforward(x)), y) for (x, y) in test_data]
-        #return sum(int(x == y) for (x, y) in test_results)
         n_test = len(test_data)
 
         pi_star_mean = np.reshape(pi_star_mean,(self.C,n_test))
-
-        #test_results = [(np.argmax(x,y) for x, y in pi_star_mean]
 
         test_results = []
         for i in range(0,n_test,1):
             res = pi_star_mean[:,i]
             test_results.append( (np.argmax(res), test_data[i][1]) )
-
-        #test_results = [(np.argmax(self.feedforward(x)), y) for (x, y) in test_data]
 
         n_correct = sum(int(x == y) for (x, y) in test_results)
 
@@ -467,8 +449,6 @@ class GPC(GeneralGPC):
             n = self.n
         else:
             n = n_points
-
-        #print(n)
             
         f_m = np.reshape(f,(self.C,n))
         pi = np.array([])
@@ -521,9 +501,7 @@ class GPC(GeneralGPC):
         if hparams is not None:
             #Reassign hyperparameters if an array of hyperparameters is passed.
             self.kernel.set_hyperparameters(hparams)
-            
-        #print(hparams)
-        
+                
         #Covariance matrix must be recomputed and inverted every time!
         K,K_inv = self.compute_K(self.x,self.x)
         K_all,K_all_inv = self.compute_K_all(K)
@@ -545,41 +523,9 @@ class GPC(GeneralGPC):
             f_i = f_hat_m[:,i]
             term2 += -np.log( np.sum( np.exp(f_i) ) )
 
-        #W_sqrt = np.sqrt(W)
-        #B = np.dot( np.dot(W_sqrt,K_all),W_sqrt)
-
-        #print(W)
-        #print(W_sqrt)
-        #print(np.dot(W_sqrt,K_all))
-        #print(np.diag(W))
-
-
-        #term3 = -0.5*np.log(np.linalg.det(K_all)*np.linalg.det(K_all_inv+W))
-
-        #np.eye(self.C,self.n)+
-
         tmpterm1 = np.dot(sp.linalg.sqrtm(W),K_all)
         tmpterm2 = np.dot( tmpterm1 , sp.linalg.sqrtm(W) )
-
-        #print(K_all.shape)
-        #print(W.shape)
-        #print(sp.linalg.sqrtm(W).shape)
         
         term3 = -0.5*np.log(np.linalg.det(np.eye(self.C*self.n)+tmpterm2))
-
-        #print(term3)
-
-        
-        #print(K_all)
-        #print(K_all_inv)
-        #print(K_inv)
-        #print(term1)
-        #print(term2)
-        #print(K_all_inv+W)
-        #print(np.linalg.det(K_all))
-        #print(np.linalg.det(K_all_inv+W))
-        
-        #Return the negative log marginal likelihood (scalar).
-        #return np.asscalar( np.matrix(self.y)*K_inv*np.transpose(np.matrix(self.y)) + np.linalg.det(K) )
 
         return -(term1 + term2 + term3)
